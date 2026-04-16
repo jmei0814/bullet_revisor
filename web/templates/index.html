@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BulletRevisor — Tailored Resume Builder</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="/static/css/styles.css" />
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ── SIDEBAR ── -->
+  <aside class="sidebar">
+    <div class="logo">
+      <div class="logo-mark">✦</div>
+      <div>
+        <div class="logo-text">BulletRevisor</div>
+        <div class="logo-tag">Tailored Resume Builder</div>
+      </div>
+    </div>
+
+    <nav class="steps-nav" id="steps-nav">
+      <div class="step-item active unlocked" data-step="1">
+        <div class="step-circle">
+          <span class="step-num">1</span>
+          <span class="step-check">✓</span>
+        </div>
+        <span class="step-label">Upload Resume</span>
+      </div>
+      <div class="step-connector"></div>
+
+      <div class="step-item" data-step="2">
+        <div class="step-circle">
+          <span class="step-num">2</span>
+          <span class="step-check">✓</span>
+        </div>
+        <span class="step-label">Edit Bullets</span>
+      </div>
+      <div class="step-connector"></div>
+
+      <div class="step-item" data-step="3">
+        <div class="step-circle">
+          <span class="step-num">3</span>
+          <span class="step-check">✓</span>
+        </div>
+        <span class="step-label">Job Description</span>
+      </div>
+      <div class="step-connector"></div>
+
+      <div class="step-item" data-step="4">
+        <div class="step-circle">
+          <span class="step-num">4</span>
+          <span class="step-check">✓</span>
+        </div>
+        <span class="step-label">Match &amp; Score</span>
+      </div>
+      <div class="step-connector"></div>
+
+      <div class="step-item" data-step="5">
+        <div class="step-circle">
+          <span class="step-num">5</span>
+          <span class="step-check">✓</span>
+        </div>
+        <span class="step-label">Export PDF</span>
+      </div>
+    </nav>
+
+    <div class="sidebar-footer">
+      <strong>How it works</strong>
+      Upload your LaTeX resume, optionally edit bullets, paste a job description, and let AI rank your bullet points by relevance.
+    </div>
+  </aside>
+
+  <!-- ── MAIN ── -->
+  <main class="main-content">
+
+    <!-- ════════════ STEP 1 — Upload ════════════ -->
+    <div class="step-panel active" id="step-1">
+      <div class="page-header">
+        <h1>Upload Your Resume</h1>
+        <p>Drag &amp; drop your LaTeX (.tex) resume file, or click to browse.</p>
+      </div>
+
+      <div class="upload-zone" id="upload-zone">
+        <span class="upload-icon">📄</span>
+        <h3>Drop your .tex file here</h3>
+        <p>Supports LaTeX resumes using the standard resumeItem / resumeSubheading template.</p>
+        <span class="upload-badge">.tex files only</span>
+      </div>
+      <input type="file" id="file-input" accept=".tex" />
+
+      <div id="file-info"></div>
+
+      <div class="step-footer">
+        <span></span>
+        <div class="step-footer-right">
+          <button class="btn btn-primary btn-lg" id="parse-btn" disabled>
+            Parse Resume →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════ STEP 2 — Edit Bullets ════════════ -->
+    <div class="step-panel" id="step-2">
+      <div class="page-header">
+        <h1>Edit Bullet Points</h1>
+        <p>Review, edit, add, or remove bullet points. Set the maximum bullets shown per entry.</p>
+      </div>
+
+      <div class="info-chip">
+        ✏️ Click any bullet to edit it inline. Changes persist through scoring.
+      </div>
+
+      <div id="edit-sections"></div>
+
+      <div class="step-footer">
+        <button class="btn btn-ghost" onclick="goToStep(1)">← Back</button>
+        <div class="step-footer-right">
+          <button class="btn btn-primary btn-lg" onclick="goToStep(3)">
+            Next: Job Description →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════ STEP 3 — Job Description ════════════ -->
+    <div class="step-panel" id="step-3">
+      <div class="page-header">
+        <h1>Job Description</h1>
+        <p>Paste the full job description. The AI will score each bullet point against it.</p>
+      </div>
+
+      <textarea
+        class="job-textarea"
+        id="job-textarea"
+        placeholder="Paste the job description here…
+
+Example:
+We are looking for a Software Engineer with experience in Python, machine learning, and cloud infrastructure. The ideal candidate will have strong problem-solving skills and experience with large-scale systems..."
+      ></textarea>
+
+      <div class="job-meta">
+        <span class="word-count" id="word-count">0 words</span>
+        <button class="btn btn-sm btn-ghost" id="clear-jd-btn">Clear</button>
+      </div>
+
+      <div class="step-footer">
+        <button class="btn btn-ghost" onclick="goToStep(2)">← Back</button>
+        <div class="step-footer-right">
+          <button class="btn btn-primary btn-lg" id="score-btn">
+            Match Bullets →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════ STEP 4 — Score & Match ════════════ -->
+    <div class="step-panel" id="step-4">
+      <div class="page-header">
+        <h1>Match &amp; Score</h1>
+        <p>Bullets are ranked by semantic similarity to the job description. Toggle which ones to include.</p>
+      </div>
+
+      <div class="score-legend">
+        <span>Relevance:</span>
+        <div class="leg-item"><div class="leg-dot" style="background:var(--green)"></div> High (&ge;65%)</div>
+        <div class="leg-item"><div class="leg-dot" style="background:var(--amber)"></div> Medium (40–65%)</div>
+        <div class="leg-item"><div class="leg-dot" style="background:var(--red)"></div>   Low (&lt;40%)</div>
+      </div>
+
+      <div id="scored-sections"></div>
+
+      <div class="step-footer">
+        <button class="btn btn-ghost" onclick="goToStep(3)">← Back</button>
+        <div class="step-footer-right">
+          <button class="btn btn-success btn-lg" id="generate-btn">
+            Generate PDF →
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ════════════ STEP 5 — Export ════════════ -->
+    <div class="step-panel" id="step-5">
+      <div class="page-header">
+        <h1>Your Tailored Resume</h1>
+        <p>Preview and download your AI-matched resume, ready to submit.</p>
+      </div>
+
+      <div class="export-grid">
+        <div class="pdf-preview-wrap">
+          <iframe class="pdf-iframe" id="pdf-iframe" title="Resume Preview"></iframe>
+        </div>
+
+        <div class="export-sidebar">
+          <div class="export-card">
+            <span class="export-icon">🎉</span>
+            <h3>Resume Ready!</h3>
+            <p>Your resume has been tailored for this specific job posting.</p>
+            <button class="btn btn-success" id="download-btn">⬇ Download PDF</button>
+            <button class="btn btn-secondary" onclick="goToStep(4)" style="margin-top:6px">← Review Bullets</button>
+          </div>
+
+          <div class="export-card">
+            <h3>New Application?</h3>
+            <p>Adjust bullets for a different job posting without re-uploading.</p>
+            <button class="btn btn-ghost" onclick="goToStep(3)">Change Job Description</button>
+          </div>
+
+          <div class="export-card">
+            <h3>Start Fresh</h3>
+            <p>Upload a different resume file.</p>
+            <button class="btn btn-danger" id="start-over-btn">Start Over</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Toast container -->
+<div class="toast-container" id="toast-container"></div>
+
+<script src="/static/js/app.js"></script>
+</body>
+</html>
