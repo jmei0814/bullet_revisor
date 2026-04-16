@@ -1,0 +1,49 @@
+# Virtual environments
+my_env/
+venv/
+env/
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Build / dist
+*.egg-info/
+dist/
+build/
+
+# LaTeX build artifacts
+*.aux
+*.log
+*.out
+*.synctex.gz
+*.fls
+*.fdb_latexmk
+
+# Upload sessions (user data, not source)
+web/uploads/
+
+# Output PDFs
+output/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+
+# Secrets / env vars
+.env
+*.env
+
+# Claude Code settings
+.claude/
+
+# macOS
+.DS_Store
