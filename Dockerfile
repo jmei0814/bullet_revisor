@@ -23,17 +23,21 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # ---- pre-download the sentence-transformers model into the image ----
-# so the first request isn't a ~80 MB cold-start download.
+# so the first request isn't a ~80 MB cold-start download. HF_HOME keeps the
+# cache inside /app where the (possibly non-root) runtime user can read it —
+# Hugging Face Spaces runs containers as uid 1000.
+ENV HF_HOME=/app/.cache
 RUN python -c "from sentence_transformers import SentenceTransformer; \
-SentenceTransformer('all-MiniLM-L6-v2')"
+SentenceTransformer('all-MiniLM-L6-v2')" \
+    && chmod -R a+rX /app/.cache
 
 # ---- app code ----
 COPY . .
 
-# Persist user data outside the app tree (mount a volume here in production).
-ENV DATA_DIR=/data
+# Sessions are transient (persistence lives in the user's browser via
+# localStorage), so ephemeral /tmp storage is all the server needs.
+ENV DATA_DIR=/tmp/data
 ENV FLASK_DEBUG=0
-RUN mkdir -p /data
 
 EXPOSE 8000
 

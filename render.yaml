@@ -1,6 +1,6 @@
-# Render blueprint — deploys BulletRevisor as a Docker web service with a
-# persistent disk for user sessions. Import this from the Render dashboard
-# ("New +" -> "Blueprint") after connecting your GitHub repo.
+# Render blueprint — optional paid alternative to the free Hugging Face Space.
+# No persistent disk needed: user persistence lives in the browser
+# (localStorage) and server sessions are transient.
 services:
   - type: web
     name: bulletrevisor
@@ -9,10 +9,6 @@ services:
     healthCheckPath: /
     envVars:
       - key: DATA_DIR
-        value: /data
+        value: /tmp/data
       - key: FLASK_DEBUG
         value: "0"
-    disk:
-      name: bulletrevisor-data
-      mountPath: /data
-      sizeGB: 1

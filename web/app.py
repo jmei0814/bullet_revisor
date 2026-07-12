@@ -1,9 +1,8 @@
-from flask import Flask, render_template, request, jsonify, send_file, g
+from flask import Flask, render_template, request, jsonify, send_file
 import os
 import sys
 import uuid
 import shutil
-import json
 import re
 from datetime import datetime, timezone
 from pathlib import Path
@@ -19,23 +18,15 @@ app = Flask(__name__)
 # Resume .tex files are tiny; cap uploads to reject oversized/DoS payloads.
 app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024  # 2 MB
 
-# Data lives under DATA_DIR (default: web/). Point DATA_DIR at a persistent
-# volume in production so uploads/sessions survive restarts.
+# Working data lives under DATA_DIR (default: web/). Sessions are transient
+# by design: resumes are persisted in the USER'S BROWSER (localStorage), not
+# on the server, so DATA_DIR needs no durable volume — /tmp works fine.
 DATA_DIR = Path(os.environ.get("DATA_DIR", Path(__file__).parent))
 UPLOAD_DIR = DATA_DIR / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
-USER_DATA_DIR = DATA_DIR / "user_data"
-USER_DATA_DIR.mkdir(parents=True, exist_ok=True)
-
-UID_COOKIE_NAME = "br_uid"
-UID_MAX_AGE = 60 * 60 * 24 * 365  # 1 year
-_UID_RE = re.compile(r"^[0-9a-f]{32}$")
-
-
-def _valid_uid(uid):
-    return bool(uid) and bool(_UID_RE.match(uid))
-
+# How long a compile session (uploaded tex + generated PDF) may live on disk.
+SESSION_TTL_SECONDS = 60 * 60  # 1 hour
 
 _SESSION_RE = re.compile(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-"
                          r"[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$")
@@ -46,37 +37,16 @@ def _valid_session(sid):
     return bool(sid) and bool(_SESSION_RE.match(sid))
 
 
-@app.before_request
-def _ensure_uid():
-    uid = request.cookies.get(UID_COOKIE_NAME)
-    if not _valid_uid(uid):
-        uid = uuid.uuid4().hex
-        g.new_uid = uid
-    g.uid = uid
-
-
-@app.after_request
-def _persist_uid_cookie(response):
-    new_uid = getattr(g, "new_uid", None)
-    if new_uid:
-        response.set_cookie(
-            UID_COOKIE_NAME,
-            new_uid,
-            max_age=UID_MAX_AGE,
-            samesite="Lax",
-            path="/",
-        )
-    return response
-
-
-def user_dir(uid):
-    """Return (and create) the per-user storage directory. Validates uid to
-    prevent path traversal — only hex uuids produced by us are accepted."""
-    if not _valid_uid(uid):
-        raise ValueError("Invalid user id")
-    d = USER_DATA_DIR / uid
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+def _sweep_stale_sessions():
+    """Delete session dirs older than SESSION_TTL_SECONDS. Called
+    opportunistically on upload so no resume outlives an editing session."""
+    cutoff = datetime.now(timezone.utc).timestamp() - SESSION_TTL_SECONDS
+    try:
+        for d in os.scandir(UPLOAD_DIR):
+            if d.is_dir() and d.stat().st_mtime < cutoff:
+                shutil.rmtree(d.path, ignore_errors=True)
+    except OSError:
+        pass  # sweeping is best-effort
 
 
 @app.errorhandler(413)
@@ -97,6 +67,8 @@ def upload():
     file = request.files["file"]
     if not file.filename or not file.filename.endswith(".tex"):
         return jsonify({"error": "Please upload a .tex LaTeX file"}), 400
+
+    _sweep_stale_sessions()
 
     session_id = str(uuid.uuid4())
     session_dir = UPLOAD_DIR / session_id
@@ -136,25 +108,6 @@ def upload():
             for entry in entries:
                 if "bullets" in entry and "max_bullets" not in entry:
                     entry["max_bullets"] = len(entry["bullets"])
-
-        # Persist a copy for this user so they can restore the session later.
-        # Persistence is best-effort — a failure here shouldn't break upload.
-        try:
-            udir = user_dir(g.uid)
-            shutil.copy(str(tex_path), str(udir / "resume.tex"))
-            now = datetime.now(timezone.utc).isoformat()
-            (udir / "meta.json").write_text(json.dumps({
-                "filename": file.filename,
-                "uploaded_at": now,
-                "session_id": session_id,
-            }))
-            (udir / "state.json").write_text(json.dumps({
-                "resume_data": data,
-                "job_description": "",
-                "saved_at": now,
-            }))
-        except Exception:
-            pass
 
         return jsonify({"session_id": session_id, "data": data})
     except Exception as e:
@@ -214,77 +167,6 @@ def compile_resume():
         return jsonify({"error": "pdflatex compilation failed — is pdflatex installed?"}), 500
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
-
-@app.route("/api/state", methods=["POST"])
-def save_state():
-    body = request.get_json() or {}
-    resume_data = body.get("resume_data")
-    job_description = body.get("job_description") or ""
-
-    if not resume_data:
-        return jsonify({"error": "resume_data is required"}), 400
-
-    try:
-        udir = user_dir(g.uid)
-        payload = {
-            "resume_data": resume_data,
-            "job_description": job_description,
-            "saved_at": datetime.now(timezone.utc).isoformat(),
-        }
-        (udir / "state.json").write_text(json.dumps(payload))
-        return jsonify({"ok": True})
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/api/restore")
-def restore():
-    uid = g.uid
-    if not _valid_uid(uid):
-        return jsonify({"found": False})
-
-    udir = USER_DATA_DIR / uid
-    meta_path = udir / "meta.json"
-    state_path = udir / "state.json"
-    tex_path = udir / "resume.tex"
-
-    if not (udir.exists() and meta_path.exists() and tex_path.exists() and state_path.exists()):
-        return jsonify({"found": False})
-
-    try:
-        meta = json.loads(meta_path.read_text())
-        state = json.loads(state_path.read_text())
-    except Exception:
-        return jsonify({"found": False})
-
-    resume_data = state.get("resume_data")
-    if not resume_data:
-        return jsonify({"found": False})
-
-    session_id = meta.get("session_id")
-    if not session_id or not re.match(r"^[0-9a-fA-F-]{36}$", session_id):
-        session_id = str(uuid.uuid4())
-        meta["session_id"] = session_id
-        meta_path.write_text(json.dumps(meta))
-
-    # The uploads/<session_id>/ dir may have been cleaned up — recreate it
-    # from the persisted copy so /api/compile keeps working.
-    session_dir = UPLOAD_DIR / session_id
-    session_tex = session_dir / "resume.tex"
-    if not session_tex.exists():
-        session_dir.mkdir(parents=True, exist_ok=True)
-        shutil.copy(str(tex_path), str(session_tex))
-
-    return jsonify({
-        "found": True,
-        "filename": meta.get("filename"),
-        "uploaded_at": meta.get("uploaded_at"),
-        "saved_at": state.get("saved_at"),
-        "session_id": session_id,
-        "resume_data": resume_data,
-        "job_description": state.get("job_description", ""),
-    })
 
 
 @app.route("/api/preview/<session_id>")

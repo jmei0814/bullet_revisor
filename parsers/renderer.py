@@ -103,7 +103,8 @@ _CV_BOUNDARY = re.compile(r"\\cvexperience|\\cvuniversity|\\cvsection|\\cvsubsec
 _PLAIN_BOUNDARY = re.compile(r"\\textbf\{|\\section\b")
 
 _ARTICLE_LIST = re.compile(r"\\resumeItemListStart(.*?)\\resumeItemListEnd", re.S)
-_CV_LIST = re.compile(r"\\begin\{itemize\}(.*?)\\end\{itemize\}", re.S)
+# Group 1 captures itemize options (e.g. [noitemsep]) so replacement preserves them.
+_CV_LIST = re.compile(r"\\begin\{itemize\}(\[[^\]]*\])?(.*?)\\end\{itemize\}", re.S)
 
 
 def _find_block(body, start_pos, anchor_str, list_re, boundary_re):
@@ -230,10 +231,11 @@ def replace_bullets(tex: str, data: Dict) -> str:
 
             # ---- build replacement ----
             if is_cv or is_plain:
+                opts = m.group(1) or ""  # preserve [options] on the itemize
                 new_inner = "\n"
                 for raw_b in bullets_raw:
                     new_inner += f"  \\item {raw_b}\n"
-                replacement = "\\begin{itemize}" + new_inner + "\\end{itemize}"
+                replacement = "\\begin{itemize}" + opts + new_inner + "\\end{itemize}"
             else:
                 new_inner = "\n"
                 for raw_b in bullets_raw:

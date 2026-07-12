@@ -7,6 +7,7 @@ const state = {
   step:         1,
   sessionId:    null,
   selectedFile: null,
+  texContent:   '',     // raw .tex source, kept client-side for persistence
   resumeData:   null,   // {sections: {...}}  — editable
   scoredData:   null,   // same structure + score/selected per bullet
   scoredStale:  false,  // true when Step-2 edits happened after scoring
@@ -155,50 +156,71 @@ function timeAgo(iso) {
 }
 
 // ────────────────────────────────────────────────────────────
-//  Per-user persistence — restore & autosave
+//  Persistence — everything lives in the user's BROWSER
+//  (localStorage). The server never stores resumes beyond the
+//  transient compile session, so restarts/redeploys lose nothing.
 // ────────────────────────────────────────────────────────────
-async function initRestore() {
+const STORAGE_KEY = 'br_state';
+
+function initRestore() {
+  let saved = null;
   try {
-    const data = await api('restore');
-    if (!data.found) return;
-    showRestoreCard(data);
-  } catch (err) {
-    // Restore is best-effort — silently ignore failures.
-  }
+    saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+  } catch (err) { /* corrupt entry — ignore */ }
+  if (!saved || !saved.texContent || !saved.resume_data) return;
+  showRestoreCard(saved);
 }
 
-function showRestoreCard(data) {
+function showRestoreCard(saved) {
   const card   = document.getElementById('restore-card');
   const detail = document.getElementById('restore-detail');
   if (!card || !detail) return;
 
-  detail.textContent = `${data.filename || 'resume.tex'} · Saved ${timeAgo(data.saved_at)}`;
+  detail.textContent = `${saved.filename || 'resume.tex'} · Saved ${timeAgo(saved.saved_at)}`;
   card.style.display = '';
 
-  document.getElementById('restore-continue-btn').onclick = () => {
-    state.sessionId      = data.session_id;
-    state.resumeData     = data.resume_data;
-    state.resumeFilename = data.filename || '';
-    state.jobDescription = data.job_description || '';
+  document.getElementById('restore-continue-btn').onclick = async () => {
+    showLoading('Restoring your session', 'Rebuilding your workspace…');
+    try {
+      // Mint a fresh server session from the locally-saved tex so compile
+      // works even if the server restarted since the last visit.
+      const file = new File([saved.texContent], saved.filename || 'resume.tex',
+                           { type: 'text/x-tex' });
+      const form = new FormData();
+      form.append('file', file);
+      const data = await api('upload', { method: 'POST', body: form });
 
-    const ta = document.getElementById('job-textarea');
-    const wc = document.getElementById('word-count');
-    if (ta) {
-      ta.value = state.jobDescription;
-      const words = ta.value.trim() ? ta.value.trim().split(/\s+/).length : 0;
-      if (wc) wc.textContent = `${words} word${words !== 1 ? 's' : ''}`;
+      state.sessionId      = data.session_id;
+      state.texContent     = saved.texContent;
+      state.resumeFilename = saved.filename || '';
+      // Use the SAVED resume data (edits/locks/caps), not the fresh parse.
+      state.resumeData     = saved.resume_data;
+      state.jobDescription = saved.job_description || '';
+
+      const ta = document.getElementById('job-textarea');
+      const wc = document.getElementById('word-count');
+      if (ta) {
+        ta.value = state.jobDescription;
+        const words = ta.value.trim() ? ta.value.trim().split(/\s+/).length : 0;
+        if (wc) wc.textContent = `${words} word${words !== 1 ? 's' : ''}`;
+      }
+
+      hideLoading();
+      unlock(2);
+      unlock(3);
+      card.style.display = 'none';
+      goToStep(2);
+      renderEditStep();
+      toast('Welcome back, your session was restored', 'success');
+    } catch (err) {
+      hideLoading();
+      toast(`Couldn't restore: ${err.message}`, 'error');
     }
-
-    unlock(2);
-    unlock(3);
-    card.style.display = 'none';
-    goToStep(2);
-    renderEditStep();
-    toast('Welcome back, your session was restored', 'success');
   };
 
   document.getElementById('restore-dismiss-btn').onclick = () => {
     card.style.display = 'none';
+    localStorage.removeItem(STORAGE_KEY);
   };
 }
 
@@ -209,19 +231,19 @@ function scheduleAutosave() {
   _autosaveTimer = setTimeout(doAutosave, 800);
 }
 
-async function doAutosave() {
-  if (!state.resumeData) return;
+function doAutosave() {
+  if (!state.resumeData || !state.texContent) return;
   try {
-    await api('state', {
-      method: 'POST',
-      body: {
-        resume_data: state.resumeData,
-        job_description: state.jobDescription || '',
-      },
-    });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({
+      texContent:      state.texContent,
+      filename:        state.resumeFilename || '',
+      resume_data:     state.resumeData,
+      job_description: state.jobDescription || '',
+      saved_at:        new Date().toISOString(),
+    }));
     flashSaveIndicator();
   } catch (err) {
-    // Autosave is best-effort — silently ignore failures.
+    // Quota exceeded or private-mode restrictions — best-effort only.
   }
 }
 
@@ -282,6 +304,10 @@ async function uploadAndParse() {
   if (!state.selectedFile) return;
   showLoading('Reading your resume', 'Parsing LaTeX structure and pulling out every bullet…');
   try {
+    // Keep the raw tex client-side: it's what localStorage persistence uses
+    // to rebuild a server session after a restart/redeploy.
+    state.texContent = await state.selectedFile.text();
+
     const form = new FormData();
     form.append('file', state.selectedFile);
     const data = await api('upload', { method: 'POST', body: form });
@@ -295,6 +321,7 @@ async function uploadAndParse() {
     unlock(3);
     goToStep(2);
     renderEditStep();
+    scheduleAutosave();
     toast('Resume parsed and ready to edit', 'success');
   } catch (err) {
     hideLoading();
@@ -817,8 +844,11 @@ function startOver() {
   state.selectedFile = null;
   state.resumeData  = null;
   state.scoredData  = null;
+  state.scoredStale = false;
+  state.texContent  = '';
   state.resumeFilename = '';
   state.jobDescription = '';
+  localStorage.removeItem(STORAGE_KEY);
   const nameInput = document.getElementById('pdf-name');
   if (nameInput) nameInput.value = '';
   state.unlocked    = { 1: true, 2: false, 3: false, 4: false, 5: false };

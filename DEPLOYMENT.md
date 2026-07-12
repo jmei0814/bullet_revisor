@@ -11,108 +11,81 @@ Vercel and Netlify cannot host it. Three hard blockers:
 2. **It loads a machine-learning model.** `sentence-transformers` pulls in
    PyTorch (~340 MB). Vercel's serverless function bundle limit is 250 MB
    unzipped — PyTorch alone exceeds it.
-3. **It writes to disk.** Uploaded resumes, per-user sessions, and compiled PDFs
-   are written to the filesystem. Serverless filesystems are read-only except a
-   small ephemeral `/tmp` that vanishes between requests.
+3. **It needs a real (if ephemeral) filesystem** for compile sessions.
 
-The app needs a **container with a real filesystem** — i.e. a platform that runs
-Docker. The instructions below use **Render** (free-ish tier, easiest), with
-**Railway** and **Fly.io** as alternatives. All three deploy the same
-`Dockerfile` in this repo.
+The app needs a **Docker container host**. Since user persistence lives in the
+browser (localStorage) and the server stores resumes only transiently (sessions
+are swept after ~1 hour), **no persistent disk is required** — which makes the
+free tier of Hugging Face Spaces a perfect fit.
 
 ---
 
-## Step 1 — Push to GitHub
+## Recommended: Hugging Face Spaces (free)
 
-If the repo isn't on GitHub yet:
+Free Docker runtime with 2 vCPU / 16 GB RAM — plenty for PyTorch + TeX Live.
+Tradeoff: free Spaces sleep after ~48 h without traffic and take ~30–60 s to
+wake. (This repo is already Space-ready: the `README.md` front-matter declares
+`sdk: docker` / `app_port: 8000`, and the Dockerfile handles HF's non-root
+runtime user.)
 
+1. Create a free account at <https://huggingface.co> (Sign Up).
+2. Create an access token with **write** scope:
+   Settings → Access Tokens → New token.
+3. Create the Space: <https://huggingface.co/new-space> →
+   - Owner: your username, Space name: `bulletrevisor`
+   - License: MIT (or your choice)
+   - SDK: **Docker** → Blank template
+   - Visibility: **Public**
+4. Push this repo to the Space:
+   ```bash
+   cd /Users/jmei0814/Documents/Resume_Builder
+   git remote add hf https://huggingface.co/spaces/<your-hf-username>/bulletrevisor
+   git push hf main
+   # username: your HF username, password: the access token
+   ```
+5. Watch the build on the Space page (~10–15 min the first time — it installs
+   TeX Live and bakes the ML model into the image).
+6. Your public URL: `https://<your-hf-username>-bulletrevisor.hf.space`
+
+Redeploys: just `git push hf main` again. Push to GitHub (`git push origin
+main`) as usual — the two remotes are independent.
+
+---
+
+## Paid upgrade path (no code changes)
+
+If the demo needs to be always-warm or on a custom domain:
+
+**Render (~$7/mo)** — this repo includes `render.yaml`:
+dashboard.render.com → New + → Blueprint → pick the GitHub repo → Apply.
+Supports custom domains + no sleep on paid instances.
+
+**Fly.io (~$3–5/mo)**:
 ```bash
-cd /Users/jmei0814/Documents/Resume_Builder
-
-# create the repo on GitHub first (github.com/new), then:
-git remote add origin https://github.com/<your-username>/bullet_revisor.git
-git add .
-git commit -m "BulletRevisor: parsing, scoring, persistence, deploy config"
-git branch -M main
-git push -u origin main
-```
-
-If `origin` already exists, just `git add . && git commit && git push`.
-
-> The repo's `.gitignore` already excludes `my_env/`, `web/uploads/`,
-> `web/user_data/`, and build artifacts, so none of that gets pushed.
-
----
-
-## Step 2 — Deploy on Render (recommended)
-
-Render reads the included `render.yaml` blueprint (Docker service + 1 GB
-persistent disk mounted at `/data`).
-
-1. Go to <https://dashboard.render.com> and sign in with GitHub.
-2. Click **New +** → **Blueprint**.
-3. Select your `bullet_revisor` repo. Render detects `render.yaml`.
-4. Click **Apply**. The first build takes ~10–15 min (it installs TeX Live and
-   pre-downloads the ML model into the image).
-5. When it goes live you'll get a URL like `https://bulletrevisor.onrender.com`.
-
-**Notes**
-- The `starter` plan (512 MB RAM) is required — the free 256 MB plan is too
-  small for PyTorch + LaTeX. Change the `plan:` line in `render.yaml` if needed.
-- Cold starts: on the free/hobby tiers Render spins the service down when idle;
-  the first request after a sleep takes ~30 s to boot. Keep it on a paid
-  instance for the demo, or ping it right before showing it off.
-
-### Manual setup (without the blueprint)
-
-New + → **Web Service** → connect repo → **Runtime: Docker** → add a **Disk**
-(mount path `/data`, 1 GB) → add env vars `DATA_DIR=/data`, `FLASK_DEBUG=0` →
-Create.
-
----
-
-## Alternative platforms (same Dockerfile)
-
-**Railway** — <https://railway.app> → New Project → Deploy from GitHub repo. It
-auto-detects the Dockerfile. Add a Volume mounted at `/data` and set
-`DATA_DIR=/data` in Variables.
-
-**Fly.io** — with the CLI:
-
-```bash
-fly launch --dockerfile Dockerfile   # answer prompts, don't deploy yet
-fly volumes create data --size 1
-# add to fly.toml:  [mounts]  source="data"  destination="/data"
-fly secrets set DATA_DIR=/data FLASK_DEBUG=0
+fly launch --dockerfile Dockerfile
 fly deploy
 ```
 
----
-
-## Step 3 — Verify
-
-Open the deployed URL and run one resume end to end: upload → edit → paste a job
-description → match → generate PDF → download. If the PDF step fails, check the
-platform's build logs to confirm `texlive-latex-extra` installed.
+**Any $4–6/mo VPS** (Hetzner, DigitalOcean):
+```bash
+docker build -t bulletrevisor . && docker run -d -p 80:8000 --restart=always bulletrevisor
+```
+(Add Caddy or nginx for HTTPS.)
 
 ---
 
-## Local Docker test (optional, before deploying)
+## Verify a deployment
+
+Run one resume end to end on the public URL: upload → edit → lock a bullet →
+paste a job description → match → generate PDF → download. Then reload the
+page and confirm the "Pick up where you left off" card restores your edits
+(it's reading your browser's localStorage, so it works even right after a
+redeploy).
+
+## Local Docker test
 
 ```bash
 docker build -t bulletrevisor .
-docker run -p 8000:8000 -e PORT=8000 bulletrevisor
+docker run -p 8000:8000 bulletrevisor
 # open http://localhost:8000
 ```
-
-## Running locally without Docker
-
-```bash
-python3 -m venv my_env
-source my_env/bin/activate
-pip install -r requirements.txt
-python web/app.py            # http://localhost:5050
-```
-
-This needs a local LaTeX install (e.g. MacTeX/BasicTeX on macOS) with the
-`fontawesome5` package available for templates that use it.
