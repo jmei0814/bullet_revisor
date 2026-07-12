@@ -1,0 +1,18 @@
+# Render blueprint — deploys BulletRevisor as a Docker web service with a
+# persistent disk for user sessions. Import this from the Render dashboard
+# ("New +" -> "Blueprint") after connecting your GitHub repo.
+services:
+  - type: web
+    name: bulletrevisor
+    runtime: docker
+    plan: starter          # 512 MB RAM; the ML model + LaTeX need >256 MB
+    healthCheckPath: /
+    envVars:
+      - key: DATA_DIR
+        value: /data
+      - key: FLASK_DEBUG
+        value: "0"
+    disk:
+      name: bulletrevisor-data
+      mountPath: /data
+      sizeGB: 1

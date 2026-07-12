@@ -3,9 +3,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>BulletRevisor — Tailored Resume Builder</title>
+  <title>BulletRevisor</title>
+  <link rel="icon" type="image/png" href="/static/img/favicon.png" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&display=swap" />
   <link rel="stylesheet" href="/static/css/styles.css" />
 </head>
 <body>
@@ -15,7 +16,9 @@
   <!-- ── SIDEBAR ── -->
   <aside class="sidebar">
     <div class="logo">
-      <div class="logo-mark">✦</div>
+      <div class="logo-mark">
+        <img src="/static/img/logo.png" alt="BulletRevisor logo" width="32" height="32" />
+      </div>
       <div>
         <div class="logo-text">BulletRevisor</div>
         <div class="logo-tag">Tailored Resume Builder</div>
@@ -26,7 +29,7 @@
       <div class="step-item active unlocked" data-step="1">
         <div class="step-circle">
           <span class="step-num">1</span>
-          <span class="step-check">✓</span>
+          <span class="step-check"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
         </div>
         <span class="step-label">Upload Resume</span>
       </div>
@@ -35,7 +38,7 @@
       <div class="step-item" data-step="2">
         <div class="step-circle">
           <span class="step-num">2</span>
-          <span class="step-check">✓</span>
+          <span class="step-check"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
         </div>
         <span class="step-label">Edit Bullets</span>
       </div>
@@ -44,7 +47,7 @@
       <div class="step-item" data-step="3">
         <div class="step-circle">
           <span class="step-num">3</span>
-          <span class="step-check">✓</span>
+          <span class="step-check"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
         </div>
         <span class="step-label">Job Description</span>
       </div>
@@ -53,7 +56,7 @@
       <div class="step-item" data-step="4">
         <div class="step-circle">
           <span class="step-num">4</span>
-          <span class="step-check">✓</span>
+          <span class="step-check"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
         </div>
         <span class="step-label">Match &amp; Score</span>
       </div>
@@ -62,16 +65,12 @@
       <div class="step-item" data-step="5">
         <div class="step-circle">
           <span class="step-num">5</span>
-          <span class="step-check">✓</span>
+          <span class="step-check"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg></span>
         </div>
         <span class="step-label">Export PDF</span>
       </div>
     </nav>
 
-    <div class="sidebar-footer">
-      <strong>How it works</strong>
-      Upload your LaTeX resume, optionally edit bullets, paste a job description, and let AI rank your bullet points by relevance.
-    </div>
   </aside>
 
   <!-- ── MAIN ── -->
@@ -80,12 +79,38 @@
     <!-- ════════════ STEP 1 — Upload ════════════ -->
     <div class="step-panel active" id="step-1">
       <div class="page-header">
-        <h1>Upload Your Resume</h1>
-        <p>Drag &amp; drop your LaTeX (.tex) resume file, or click to browse.</p>
+        <h1>Upload your resume</h1>
+        <button class="help-btn" type="button" aria-label="Help">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9.2"/><path d="M9.4 9.2a2.7 2.7 0 115.2 1c-.7 1.1-2.6 1.4-2.6 2.9"/><circle cx="12" cy="16.8" r="0.4" fill="currentColor"/></svg>
+          <span class="help-pop">Drop a .tex file in the box or click it to browse. BulletRevisor reads LaTeX resumes built on the standard resumeItem template. Hit Parse Resume to continue.</span>
+        </button>
+      </div>
+
+      <div class="restore-card" id="restore-card" style="display:none">
+        <div class="restore-card-info">
+          <span class="restore-icon">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v5h5"/><path d="M3.5 13a8.5 8.5 0 1 0 2.3-6.9L3 8.5"/><path d="M12 8v4.5l3 2"/></svg>
+          </span>
+          <div>
+            <div class="restore-title">Pick up where you left off</div>
+            <div class="restore-detail" id="restore-detail"></div>
+          </div>
+        </div>
+        <div class="restore-actions">
+          <button class="btn btn-primary btn-sm" id="restore-continue-btn">Continue editing</button>
+          <button class="btn btn-ghost btn-sm" id="restore-dismiss-btn">Start fresh</button>
+        </div>
       </div>
 
       <div class="upload-zone" id="upload-zone">
-        <span class="upload-icon">📄</span>
+        <span class="upload-icon">
+          <svg viewBox="0 0 24 24" width="40" height="40" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/>
+            <path d="M14 3v5h5"/>
+            <path d="M12 12.5v6"/>
+            <path d="M9.3 15 12 12.5 14.7 15"/>
+          </svg>
+        </span>
         <h3>Drop your .tex file here</h3>
         <p>Supports LaTeX resumes using the standard resumeItem / resumeSubheading template.</p>
         <span class="upload-badge">.tex files only</span>
@@ -107,12 +132,20 @@
     <!-- ════════════ STEP 2 — Edit Bullets ════════════ -->
     <div class="step-panel" id="step-2">
       <div class="page-header">
-        <h1>Edit Bullet Points</h1>
-        <p>Review, edit, add, or remove bullet points. Set the maximum bullets shown per entry.</p>
+        <h1>Edit bullet points</h1>
+        <button class="help-btn" type="button" aria-label="Help">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9.2"/><path d="M9.4 9.2a2.7 2.7 0 115.2 1c-.7 1.1-2.6 1.4-2.6 2.9"/><circle cx="12" cy="16.8" r="0.4" fill="currentColor"/></svg>
+          <span class="help-pop">Click any bullet to edit its text. Add bullets with the button below each entry, remove them with the small x, and use the lock to guarantee a bullet stays in the final PDF. Max bullets caps how many appear per entry. Everything saves automatically.</span>
+        </button>
       </div>
 
       <div class="info-chip">
-        ✏️ Click any bullet to edit it inline. Changes persist through scoring.
+        <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"/></svg>
+        Click any bullet to edit it inline. Changes are saved automatically.
+        <span class="save-indicator" id="save-indicator">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"/></svg>
+          Saved
+        </span>
       </div>
 
       <div id="edit-sections"></div>
@@ -130,8 +163,11 @@
     <!-- ════════════ STEP 3 — Job Description ════════════ -->
     <div class="step-panel" id="step-3">
       <div class="page-header">
-        <h1>Job Description</h1>
-        <p>Paste the full job description. The AI will score each bullet point against it.</p>
+        <h1>Job description</h1>
+        <button class="help-btn" type="button" aria-label="Help">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9.2"/><path d="M9.4 9.2a2.7 2.7 0 115.2 1c-.7 1.1-2.6 1.4-2.6 2.9"/><circle cx="12" cy="16.8" r="0.4" fill="currentColor"/></svg>
+          <span class="help-pop">Paste the full job posting, including responsibilities and qualifications. Every bullet gets scored against it, so more detail means better rankings.</span>
+        </button>
       </div>
 
       <textarea
@@ -161,15 +197,18 @@ We are looking for a Software Engineer with experience in Python, machine learni
     <!-- ════════════ STEP 4 — Score & Match ════════════ -->
     <div class="step-panel" id="step-4">
       <div class="page-header">
-        <h1>Match &amp; Score</h1>
-        <p>Bullets are ranked by semantic similarity to the job description. Toggle which ones to include.</p>
+        <h1>Match &amp; score</h1>
+        <button class="help-btn" type="button" aria-label="Help">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9.2"/><path d="M9.4 9.2a2.7 2.7 0 115.2 1c-.7 1.1-2.6 1.4-2.6 2.9"/><circle cx="12" cy="16.8" r="0.4" fill="currentColor"/></svg>
+          <span class="help-pop">Bullets are ranked by relevance to the posting. Check or uncheck each one to choose what makes the final resume. Locked bullets always stay in.</span>
+        </button>
       </div>
 
       <div class="score-legend">
-        <span>Relevance:</span>
-        <div class="leg-item"><div class="leg-dot" style="background:var(--green)"></div> High (&ge;65%)</div>
-        <div class="leg-item"><div class="leg-dot" style="background:var(--amber)"></div> Medium (40–65%)</div>
-        <div class="leg-item"><div class="leg-dot" style="background:var(--red)"></div>   Low (&lt;40%)</div>
+        <span>Relevance</span>
+        <div class="leg-item"><div class="leg-dot" style="background:var(--green)"></div> High <span class="leg-range">&ge;65%</span></div>
+        <div class="leg-item"><div class="leg-dot" style="background:var(--amber)"></div> Medium <span class="leg-range">40–65%</span></div>
+        <div class="leg-item"><div class="leg-dot" style="background:var(--red)"></div> Low <span class="leg-range">&lt;40%</span></div>
       </div>
 
       <div id="scored-sections"></div>
@@ -187,8 +226,11 @@ We are looking for a Software Engineer with experience in Python, machine learni
     <!-- ════════════ STEP 5 — Export ════════════ -->
     <div class="step-panel" id="step-5">
       <div class="page-header">
-        <h1>Your Tailored Resume</h1>
-        <p>Preview and download your AI-matched resume, ready to submit.</p>
+        <h1>Your tailored resume</h1>
+        <button class="help-btn" type="button" aria-label="Help">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="9.2"/><path d="M9.4 9.2a2.7 2.7 0 115.2 1c-.7 1.1-2.6 1.4-2.6 2.9"/><circle cx="12" cy="16.8" r="0.4" fill="currentColor"/></svg>
+          <span class="help-pop">Preview the compiled PDF and download it when it looks right. Go back to adjust bullets for this posting, swap in a different job description, or start over with a new resume.</span>
+        </button>
       </div>
 
       <div class="export-grid">
@@ -198,21 +240,28 @@ We are looking for a Software Engineer with experience in Python, machine learni
 
         <div class="export-sidebar">
           <div class="export-card">
-            <span class="export-icon">🎉</span>
-            <h3>Resume Ready!</h3>
-            <p>Your resume has been tailored for this specific job posting.</p>
-            <button class="btn btn-success" id="download-btn">⬇ Download PDF</button>
+            <span class="export-icon">
+              <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5L16 9.5"/></svg>
+            </span>
+            <h3>Resume ready</h3>
+            <p>Tailored for this posting! Adjust the file name as needed before downloading.</p>
+            <label class="pdf-name-label" for="pdf-name">File name</label>
+            <input type="text" id="pdf-name" class="pdf-name-input" spellcheck="false" autocomplete="off" />
+            <button class="btn btn-success" id="download-btn">
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="M7.5 10.5 12 15l4.5-4.5"/><path d="M4 18h16"/></svg>
+              Download PDF
+            </button>
             <button class="btn btn-secondary" onclick="goToStep(4)" style="margin-top:6px">← Review Bullets</button>
           </div>
 
           <div class="export-card">
-            <h3>New Application?</h3>
+            <h3>New application?</h3>
             <p>Adjust bullets for a different job posting without re-uploading.</p>
-            <button class="btn btn-ghost" onclick="goToStep(3)">Change Job Description</button>
+            <button class="btn btn-secondary" onclick="goToStep(3)">Change Job Description</button>
           </div>
 
           <div class="export-card">
-            <h3>Start Fresh</h3>
+            <h3>Start fresh</h3>
             <p>Upload a different resume file.</p>
             <button class="btn btn-danger" id="start-over-btn">Start Over</button>
           </div>

@@ -1,5 +1,7 @@
 import json
 import math
+import re
+from pathlib import Path
 from sentence_transformers import SentenceTransformer, util
 
 
@@ -11,6 +13,82 @@ def _calibrate(raw: float) -> float:
     """
     calibrated = (raw - 0.15) / 0.55
     return round(max(0.0, min(1.0, calibrated)), 4)
+
+
+# ---- gibberish guard -------------------------------------------------------
+# Embedding models happily produce moderate similarity for keyboard mash
+# ("eoijsdf"), which would outrank real sentences. Gate scores by a text
+# validity factor: bullets made of unrecognizable tokens score 0.
+
+_WORDS_FILE = Path("/usr/share/dict/words")
+_word_set = None
+
+def _load_words():
+    global _word_set
+    if _word_set is None:
+        try:
+            _word_set = {w.strip().lower() for w in _WORDS_FILE.read_text().split("\n") if w.strip()}
+        except OSError:
+            _word_set = set()
+    return _word_set
+
+_VOWEL_RE = re.compile(r"[aeiouy]")
+_CONSONANT_RUN_RE = re.compile(r"[bcdfghjklmnpqrstvwxz]{4,}")
+
+# Lowercase tech terms that aren't in the dictionary and have no vowels /
+# unusual structure, so the heuristic below would otherwise reject them.
+_TECH_ALLOWLIST = {
+    "nginx", "kubectl", "webpack", "pnpm", "npm", "yarn", "grpc", "graphql",
+    "frontend", "backend", "fullstack", "microservices", "microservice",
+    "serverless", "async", "await", "middleware", "stdlib", "plpgsql",
+    "procs", "kubernetes", "kafka", "redis", "mongodb", "postgres", "postgresql",
+    "sql", "css", "html", "json", "yaml", "toml", "http", "https", "rest",
+    "grpc", "oauth", "jwt", "ssr", "csr", "cdn", "cli", "sdk", "api", "apis",
+    "devops", "cicd", "terraform", "ansible", "pytorch", "tensorflow", "numpy",
+    "pandas", "matplotlib", "sklearn", "scikit", "flask", "django", "fastapi",
+    "nodejs", "typescript", "javascript", "golang", "rustlang", "webrtc",
+    "websocket", "websockets", "ffmpeg", "opencv", "cuda", "vue", "svelte",
+    "eslint", "prettier", "jest", "pytest", "gradle", "maven", "gitlab",
+    "github", "bitbucket", "jira", "datadog", "prometheus", "grafana",
+}
+
+def _token_is_recognizable(tok: str) -> bool:
+    """A token counts as real if it: contains digits (ROS2), is a known tech
+    term, is a dictionary word, is a short acronym (SQL), is mixed-case
+    (FastAPI), or simply has plausible word structure (a vowel and no run of
+    4+ consonants), which admits jargon like nginx/webpack/middleware while
+    still rejecting keyboard mash like 'eoijsdf' (run 'jsdf')."""
+    if any(c.isdigit() for c in tok):
+        return True
+    low = tok.lower()
+    # A single letter repeated (aaaa, qqq) is never a real word.
+    if len(set(low)) == 1 and len(low) > 1:
+        return False
+    if low in _TECH_ALLOWLIST or (low.endswith("s") and low[:-1] in _TECH_ALLOWLIST):
+        return True
+    if tok.isupper():
+        return len(tok) <= 6
+    words = _load_words()
+    if low in words or (low.endswith("s") and low[:-1] in words):
+        return True
+    if any(c.isupper() for c in tok[1:]):
+        return True  # internal caps => product name (PostgreSQL, FastAPI)
+    # Plausible word structure: has a vowel, no long consonant run.
+    return bool(_VOWEL_RE.search(low)) and not _CONSONANT_RUN_RE.search(low)
+
+def _text_validity(text: str) -> float:
+    """1.0 for normal prose, scaling toward 0.0 as the share of gibberish
+    tokens grows. A bullet with no word tokens scores 0."""
+    tokens = re.findall(r"[A-Za-z][A-Za-z0-9+#./-]*", text)
+    if not tokens:
+        return 0.0
+    recognized = sum(1 for t in tokens if _token_is_recognizable(t))
+    frac = recognized / len(tokens)
+    # Forgiving plateau: only penalize when most tokens are unrecognizable,
+    # so a jargon-dense real bullet isn't dragged down.
+    if frac >= 0.5:
+        return 1.0
+    return round(frac / 0.5, 4)
 
 # Load model (you can change this to any SBERT variant)
 model = SentenceTransformer('all-MiniLM-L6-v2')
@@ -99,7 +177,7 @@ def score_all_bullets(data: dict, job_desc: str) -> dict:
                 scored_bullets.append({
                     "raw": raw_text,
                     "clean": clean_text,
-                    "score": _calibrate(raw_score),
+                    "score": round(_calibrate(raw_score) * _text_validity(clean_text), 4),
                 })
 
             scored_bullets.sort(key=lambda x: x["score"], reverse=True)

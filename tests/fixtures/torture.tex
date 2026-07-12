@@ -1,0 +1,186 @@
+%-------------------------
+% TORTURE TEST RESUME
+% Every construct the parser claims to support, plus deliberate nastiness:
+% special chars, nested braces, duplicate names, comments containing fake
+% sections, empty args, math, hrefs, multi-line items, orphan lists.
+%------------------------
+
+\documentclass[letterpaper,11pt]{article}
+
+\usepackage{latexsym}
+\usepackage[empty]{fullpage}
+\usepackage{titlesec}
+\usepackage[usenames,dvipsnames]{color}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+\usepackage{fancyhdr}
+\usepackage[english]{babel}
+\usepackage{tabularx}
+\input{glyphtounicode}
+
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\renewcommand{\footrulewidth}{0pt}
+
+\addtolength{\oddsidemargin}{-0.5in}
+\addtolength{\evensidemargin}{-0.5in}
+\addtolength{\textwidth}{1in}
+\addtolength{\topmargin}{-.5in}
+\addtolength{\textheight}{1.0in}
+
+\urlstyle{same}
+\raggedbottom
+\raggedright
+\setlength{\tabcolsep}{0in}
+
+\titleformat{\section}{
+  \vspace{-4pt}\scshape\raggedright\large
+}{}{0em}{}[\color{black}\titlerule \vspace{-5pt}]
+
+\pdfgentounicode=1
+
+% Custom commands (the classic Jake set, including the S variant)
+\newcommand{\resumeItem}[1]{
+  \item\small{
+    {#1 \vspace{-2pt}}
+  }
+}
+
+\newcommand{\resumeSubheading}[4]{
+  \vspace{-2pt}\item
+    \begin{tabular*}{0.97\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & #2 \\
+      \textit{\small#3} & \textit{\small #4} \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeSubheadingS}[2]{
+  \vspace{-2pt}\item
+    \begin{tabular*}{0.97\textwidth}[t]{l@{\extracolsep{\fill}}r}
+      \textbf{#1} & #2 \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeProjectHeading}[2]{
+    \item
+    \begin{tabular*}{0.97\textwidth}{l@{\extracolsep{\fill}}r}
+      \small#1 & #2 \\
+    \end{tabular*}\vspace{-7pt}
+}
+
+\newcommand{\resumeSubItem}[1]{\resumeItem{#1}\vspace{-4pt}}
+
+\newcommand{\resumeSubHeadingListStart}{\begin{itemize}[leftmargin=0.15in, label={}]}
+\newcommand{\resumeSubHeadingListEnd}{\end{itemize}}
+\newcommand{\resumeItemListStart}{\begin{itemize}}
+\newcommand{\resumeItemListEnd}{\end{itemize}\vspace{-5pt}}
+
+%-------------------------------------------
+% The following commented block must be IGNORED by the parser entirely:
+% \section{Fake Commented Section}
+%   \resumeSubHeadingListStart
+%     \resumeSubheading{Ghost Corp}{Never}{Nowhere}{2099}
+%       \resumeItemListStart
+%         \resumeItem{This bullet must never appear in parsed output}
+%       \resumeItemListEnd
+%   \resumeSubHeadingListEnd
+%-------------------------------------------
+
+\begin{document}
+
+\begin{center}
+    \textbf{\Huge \scshape Torture T\'est\'er} \\ \vspace{1pt}
+    \small 555-000-1111 $|$ \href{mailto:t@t.io}{\underline{t\_test@t.io}} $|$
+    \href{https://example.com/a_b_c}{\underline{example.com/a\_b\_c}}
+\end{center}
+
+% Section with special chars in the name and duplicate company names inside
+\section{R\&D Experience \& Absurdity}
+  \resumeSubHeadingListStart
+
+    \resumeSubheading
+      {Research Assistant (100\% time)}{Jan. 2020 -- Present}
+      {Ampersand \& Sons, Inc.}{Austin, TX}
+      \resumeItemListStart
+        \resumeItem{Handled budgets of \$1,200,000+ (a 45\% increase) across 3 fiscal years \& 12 departments}
+        \resumeItem{Built \textbf{nested \emph{deeply \textit{formatted}}} pipelines with 99.9\% uptime}
+        \resumeItem{Improved $O(n^2)$ algorithm to $O(n \log n)$, cutting latency by $\sim$40\%}
+      \resumeItemListEnd
+
+    \resumeSubheading
+      {Junior Research Assistant}{June 2018 -- Dec. 2019}
+      {Ampersand \& Sons, Inc.}{Austin, TX}
+      \resumeItemListStart
+        \resumeItem{Same employer as above: duplicate-company anchoring must attach THIS list to THIS entry}
+        \resumeItem{Wrote reports using 100\_percent\_snake\_case\_file\_names.md and C\# tooling}
+      \resumeItemListEnd
+
+    \resumeSubheadingS
+      {Ampersand \& Sons, Inc. $|$ Contractor}{2017}{}
+      \resumeItemListStart
+        \resumeItem{S-variant with a stray third brace group AND the same company name a third time}
+      \resumeItemListEnd
+
+  \resumeSubHeadingListEnd
+
+% Empty args + trailing decoration
+\section{Teaching}
+  \resumeSubHeadingListStart
+  \resumeSubheading
+      {Course Assistant}{2023--2025}{}{}\vspace{-12pt}
+      \resumeItemListStart
+       \resumeItem{Entry with two empty trailing args and trailing \vspace macro}
+     \resumeItemListEnd
+  \resumeSubHeadingListEnd
+
+% Projects with heavily nested braces in the title
+\section{Projects}
+    \resumeSubHeadingListStart
+      \resumeProjectHeading
+          {\textbf{\href{https://github.com/x/y_z}{\underline{Deep\{Brace\} Project}}} $|$ \emph{Python, C\#, F\#}}{2024}
+          \resumeItemListStart
+            \resumeItem{Title contains escaped braces \{like this\}, an href, underline, and emph all nested}
+            \resumeItem{Second bullet mentions 50\%+ improvement \& \$0 budget}
+          \resumeItemListEnd
+      \resumeProjectHeading
+          {\textbf{Tiny} $|$ \emph{One-bullet project}}{2023}
+          \resumeItemListStart
+            \resumeItem{Single bullet, minimal project}
+          \resumeItemListEnd
+    \resumeSubHeadingListEnd
+
+% Orphan item list: bullets with no subheading at all
+\section{Honors \& Awards}
+\resumeSubHeadingListStart
+    \resumeItemListStart
+        \resumeItem{Dean's List (all semesters) \null\hfill 2020--2024}
+        \resumeItem{1st place, Hackathon of 500+ teams \null\hfill 2023}
+    \resumeItemListEnd
+  \resumeSubHeadingListEnd
+
+% Starred section written in plain LaTeX (no template commands)
+\section*{Community Involvement}
+\textbf{Torture Testers Anonymous}, Remote \hfill 2021 -- Present \\
+\textit{Founding Member \& Chief Chaos Officer}
+\begin{itemize}
+    \item Plain-LaTeX entry under a STARRED section heading; must parse company, role, and dates.
+    \item A very long bullet that wraps many lines in any editor because it keeps going and going with more detail about achievements, metrics like 12,345 users served, 67\% retention, \$89k saved, and a trailing math expression $x \geq y$ for good measure, ensuring multi-line item extraction works.
+\end{itemize}
+
+\textbf{Second Plain Org}, Somewhere \hfill 2020 \\
+\textit{Member}
+\begin{itemize}
+    \item Second plain entry to test consecutive heading/itemize pairing.
+\end{itemize}
+
+% Skills written in the label-inside-itemize style
+\section{Technical Skills}
+ \begin{itemize}[leftmargin=0.15in, label={}]
+    \small{\item{
+     \textbf{Languages}{: Python, C\#, F\#, R, SQL (Postgres \& MySQL)} \\
+     \textbf{Esoterica}{: LaTeX3, TikZ, \%-encoding, \$-signs, 100\_underscores} \\
+    }}
+ \end{itemize}
+
+\end{document}

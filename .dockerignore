@@ -1,0 +1,15 @@
+my_env/
+__pycache__/
+*.pyc
+.git/
+.claude/
+web/uploads/
+web/user_data/
+data/
+output/
+*.pdf
+*.aux
+*.log
+*.out
+.DS_Store
+tests/

@@ -26,9 +26,12 @@ build/
 
 # Upload sessions (user data, not source)
 web/uploads/
+web/user_data/
 
-# Output PDFs
+# Output PDFs (generated artifacts; the app writes these at runtime)
 output/
+/resume_updated.pdf
+resume_updated.*
 
 # OS
 .DS_Store

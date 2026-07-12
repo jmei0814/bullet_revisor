@@ -9,7 +9,22 @@ const state = {
   selectedFile: null,
   resumeData:   null,   // {sections: {...}}  — editable
   scoredData:   null,   // same structure + score/selected per bullet
+  scoredStale:  false,  // true when Step-2 edits happened after scoring
+  editKeys:     [],     // ordered section names for Step 2 (index-keyed DOM)
+  scoredKeys:   [],     // ordered section names for Step 4
   unlocked:     { 1: true, 2: false, 3: false, 4: false, 5: false },
+};
+
+// ── Inline icon set (1.5–1.8px stroke, no external assets) ────
+const ICON_LOCK = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V7a4 4 0 0 1 8 0v4"></path></svg>`;
+const ICON_X    = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6 6l12 12M18 6L6 18"></path></svg>`;
+const ICON_CHEVRON = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"></path></svg>`;
+const ICON_GRIP = `<svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.4"/><circle cx="15" cy="6" r="1.4"/><circle cx="9" cy="12" r="1.4"/><circle cx="15" cy="12" r="1.4"/><circle cx="9" cy="18" r="1.4"/><circle cx="15" cy="18" r="1.4"/></svg>`;
+const ICON_SEARCH = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>`;
+const ICON_TOAST = {
+  success: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7.5"></path></svg>`,
+  error:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v5"></path><path d="M12 16h.01"></path></svg>`,
+  info:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"></circle><path d="M12 10.5v5.5"></path><path d="M12 7.5h.01"></path></svg>`,
 };
 
 // ── Bootstrap ────────────────────────────────────────────────
@@ -19,7 +34,24 @@ document.addEventListener('DOMContentLoaded', () => {
   initExport();
   bindSidebarNav();
   renderNav();
+  initRestore();
+  initHelp();
 });
+
+// ── Help buttons: popover shows on hover, pins open on click ─
+function initHelp() {
+  document.querySelectorAll('.help-btn').forEach(btn => {
+    btn.addEventListener('click', e => {
+      e.stopPropagation();
+      const wasPinned = btn.classList.contains('pinned');
+      document.querySelectorAll('.help-btn.pinned').forEach(b => b.classList.remove('pinned'));
+      if (!wasPinned) btn.classList.add('pinned');
+    });
+  });
+  document.addEventListener('click', () => {
+    document.querySelectorAll('.help-btn.pinned').forEach(b => b.classList.remove('pinned'));
+  });
+}
 
 // ── Navigation ───────────────────────────────────────────────
 function goToStep(n) {
@@ -56,7 +88,7 @@ function bindSidebarNav() {
 }
 
 // ── Loading overlay ──────────────────────────────────────────
-function showLoading(title = 'Processing…', sub = 'Please wait') {
+function showLoading(title = 'Working on it', sub = 'This should only take a moment…') {
   const el = document.createElement('div');
   el.id = 'loading-overlay';
   el.className = 'loading-overlay';
@@ -77,7 +109,7 @@ function toast(msg, type = 'info') {
   const wrap = document.getElementById('toast-container');
   const el   = document.createElement('div');
   el.className = `toast toast-${type}`;
-  el.textContent = msg;
+  el.innerHTML = `<span class="toast-icon">${ICON_TOAST[type] || ICON_TOAST.info}</span><span class="toast-msg">${esc(msg)}</span>`;
   wrap.appendChild(el);
   setTimeout(() => el.remove(), 4200);
 }
@@ -105,6 +137,101 @@ function esc(str) {
 function autoResize(ta) {
   ta.style.height = 'auto';
   ta.style.height = ta.scrollHeight + 'px';
+}
+
+function timeAgo(iso) {
+  if (!iso) return 'recently';
+  const then = new Date(iso).getTime();
+  if (Number.isNaN(then)) return 'recently';
+  const diffMs = Date.now() - then;
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1)  return 'just now';
+  if (mins < 60) return `${mins} minute${mins !== 1 ? 's' : ''} ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24)  return `${hrs} hour${hrs !== 1 ? 's' : ''} ago`;
+  const days = Math.floor(hrs / 24);
+  if (days < 30) return `${days} day${days !== 1 ? 's' : ''} ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+// ────────────────────────────────────────────────────────────
+//  Per-user persistence — restore & autosave
+// ────────────────────────────────────────────────────────────
+async function initRestore() {
+  try {
+    const data = await api('restore');
+    if (!data.found) return;
+    showRestoreCard(data);
+  } catch (err) {
+    // Restore is best-effort — silently ignore failures.
+  }
+}
+
+function showRestoreCard(data) {
+  const card   = document.getElementById('restore-card');
+  const detail = document.getElementById('restore-detail');
+  if (!card || !detail) return;
+
+  detail.textContent = `${data.filename || 'resume.tex'} · Saved ${timeAgo(data.saved_at)}`;
+  card.style.display = '';
+
+  document.getElementById('restore-continue-btn').onclick = () => {
+    state.sessionId      = data.session_id;
+    state.resumeData     = data.resume_data;
+    state.resumeFilename = data.filename || '';
+    state.jobDescription = data.job_description || '';
+
+    const ta = document.getElementById('job-textarea');
+    const wc = document.getElementById('word-count');
+    if (ta) {
+      ta.value = state.jobDescription;
+      const words = ta.value.trim() ? ta.value.trim().split(/\s+/).length : 0;
+      if (wc) wc.textContent = `${words} word${words !== 1 ? 's' : ''}`;
+    }
+
+    unlock(2);
+    unlock(3);
+    card.style.display = 'none';
+    goToStep(2);
+    renderEditStep();
+    toast('Welcome back, your session was restored', 'success');
+  };
+
+  document.getElementById('restore-dismiss-btn').onclick = () => {
+    card.style.display = 'none';
+  };
+}
+
+let _autosaveTimer = null;
+function scheduleAutosave() {
+  if (!state.resumeData) return;
+  clearTimeout(_autosaveTimer);
+  _autosaveTimer = setTimeout(doAutosave, 800);
+}
+
+async function doAutosave() {
+  if (!state.resumeData) return;
+  try {
+    await api('state', {
+      method: 'POST',
+      body: {
+        resume_data: state.resumeData,
+        job_description: state.jobDescription || '',
+      },
+    });
+    flashSaveIndicator();
+  } catch (err) {
+    // Autosave is best-effort — silently ignore failures.
+  }
+}
+
+let _saveIndicatorTimer = null;
+function flashSaveIndicator() {
+  const el = document.getElementById('save-indicator');
+  if (!el) return;
+  el.classList.add('visible');
+  clearTimeout(_saveIndicatorTimer);
+  _saveIndicatorTimer = setTimeout(() => el.classList.remove('visible'), 1500);
 }
 
 // ────────────────────────────────────────────────────────────
@@ -138,13 +265,13 @@ function initUpload() {
 
 function setFile(file) {
   if (!file.name.endsWith('.tex')) {
-    toast('Please select a .tex LaTeX file', 'error');
+    toast('Only .tex files are supported', 'error');
     return;
   }
   state.selectedFile = file;
   document.getElementById('file-info').innerHTML = `
     <div class="file-selected">
-      <span class="fi-icon">📄</span>
+      <span class="fi-icon"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg></span>
       <span class="fi-name">${esc(file.name)}</span>
       <span class="fi-size">${(file.size / 1024).toFixed(1)} KB</span>
     </div>`;
@@ -153,21 +280,22 @@ function setFile(file) {
 
 async function uploadAndParse() {
   if (!state.selectedFile) return;
-  showLoading('Parsing Resume', 'Extracting sections and bullet points…');
+  showLoading('Reading your resume', 'Parsing LaTeX structure and pulling out every bullet…');
   try {
     const form = new FormData();
     form.append('file', state.selectedFile);
     const data = await api('upload', { method: 'POST', body: form });
 
-    state.sessionId  = data.session_id;
-    state.resumeData = data.data;
+    state.sessionId      = data.session_id;
+    state.resumeData     = data.data;
+    state.resumeFilename = state.selectedFile.name;
 
     hideLoading();
     unlock(2);
     unlock(3);
     goToStep(2);
     renderEditStep();
-    toast('Resume parsed successfully!', 'success');
+    toast('Resume parsed and ready to edit', 'success');
   } catch (err) {
     hideLoading();
     toast(err.message, 'error');
@@ -177,14 +305,22 @@ async function uploadAndParse() {
 // ────────────────────────────────────────────────────────────
 //  STEP 2 — Edit Bullets
 // ────────────────────────────────────────────────────────────
+// Resolve a Step-2 section index to its data array. Section names are never
+// placed in the DOM as ids/handlers (they could contain quotes/scripts);
+// cards are keyed by numeric index into state.editKeys instead.
+function editSection(si) { return state.resumeData.sections[state.editKeys[si]]; }
+
 function renderEditStep() {
   const root = document.getElementById('edit-sections');
   root.innerHTML = '';
   if (!state.resumeData) return;
 
-  for (const [sec, entries] of Object.entries(state.resumeData.sections)) {
+  state.editKeys = Object.keys(state.resumeData.sections);
+
+  state.editKeys.forEach((sec, si) => {
+    const entries = state.resumeData.sections[sec];
     const hasEntries = entries.some(e => e.bullets?.length > 0);
-    if (!hasEntries) continue;
+    if (!hasEntries) return;
 
     const grp = document.createElement('div');
     grp.className = 'section-group';
@@ -192,17 +328,28 @@ function renderEditStep() {
 
     entries.forEach((entry, ei) => {
       if (!entry.bullets) return;
-      grp.appendChild(buildEditCard(sec, ei, entry));
+      grp.appendChild(buildEditCard(si, ei, entry));
     });
 
     root.appendChild(grp);
-  }
+  });
+
+  // Textareas are built detached, so scrollHeight was 0 during autoResize.
+  // Re-measure now that they're laid out in the document (synchronous:
+  // rAF can be throttled in embedded/background contexts).
+  resizeAllBullets();
+  setTimeout(resizeAllBullets, 60); // once more after fonts/layout settle
 }
 
-function buildEditCard(sec, ei, entry) {
+function resizeAllBullets() {
+  document.querySelectorAll('textarea.bullet-text-el').forEach(autoResize);
+}
+
+function buildEditCard(si, ei, entry) {
   const card = document.createElement('div');
   card.className = 'entry-card open';
-  card.id = `ec-${sec}-${ei}`;
+  card.id = `ec-${si}-${ei}`;
+  card.style.setProperty('--i', ei);
 
   const title    = entryTitle(entry);
   const subtitle = entrySubtitle(entry);
@@ -210,40 +357,40 @@ function buildEditCard(sec, ei, entry) {
   const maxB     = entry.max_bullets ?? entry.bullets.length;
 
   card.innerHTML = `
-    <div class="entry-header" onclick="toggleCard('ec-${sec}-${ei}')">
+    <div class="entry-header" onclick="toggleCard('ec-${si}-${ei}')">
       <div class="entry-header-info">
         <div class="entry-title">${esc(title)}</div>
         ${subtitle ? `<div class="entry-subtitle">${esc(subtitle)}</div>` : ''}
       </div>
       ${date ? `<span class="entry-date">${esc(date)}</span>` : ''}
-      <span class="entry-chevron">▼</span>
+      <span class="entry-chevron">${ICON_CHEVRON}</span>
     </div>
     <div class="entry-body">
-      <ul class="bullets-list" id="bl-${sec}-${ei}"></ul>
-      <button class="add-bullet-btn" onclick="addBullet('${sec}',${ei})">+ Add bullet point</button>
+      <ul class="bullets-list" id="bl-${si}-${ei}"></ul>
+      <button class="add-bullet-btn" onclick="addBullet(${si},${ei})">+ Add bullet point</button>
       <div class="max-ctrl">
-        <label for="max-${sec}-${ei}">Max bullets in output:</label>
-        <input type="number" id="max-${sec}-${ei}" min="1" max="30" value="${maxB}"
-          onchange="updateMax('${sec}',${ei},this.value)" />
+        <label for="max-${si}-${ei}">Max bullets in output:</label>
+        <input type="number" id="max-${si}-${ei}" min="1" max="30" value="${maxB}"
+          onchange="updateMax(${si},${ei},this.value)" />
         <span class="max-hint">bullet${maxB !== 1 ? 's' : ''} shown on resume</span>
       </div>
     </div>`;
 
   // Pass the card as context so renderBulletList can find the <ul>
   // before the card is attached to the document DOM.
-  renderBulletList(sec, ei, card);
+  renderBulletList(si, ei, card);
   return card;
 }
 
-function renderBulletList(sec, ei, context) {
+function renderBulletList(si, ei, context) {
   // context is passed during initial build (card not yet in DOM);
   // omit it for re-renders when the card is already in the document.
   const ul = context
-    ? context.querySelector(`[id="bl-${sec}-${ei}"]`)
-    : document.getElementById(`bl-${sec}-${ei}`);
+    ? context.querySelector(`#bl-${si}-${ei}`)
+    : document.getElementById(`bl-${si}-${ei}`);
   if (!ul) return;
 
-  const entry = state.resumeData.sections[sec][ei];
+  const entry = editSection(si)[ei];
   ul.innerHTML = '';
 
   entry.bullets.forEach((b, bi) => {
@@ -252,64 +399,120 @@ function renderBulletList(sec, ei, context) {
     const li     = document.createElement('li');
     li.className = `bullet-item${locked ? ' locked-bullet' : ''}`;
     li.innerHTML = `
-      <span class="bullet-drag" title="Drag to reorder">⠿</span>
+      <span class="bullet-drag" title="Drag to reorder" draggable="true">${ICON_GRIP}</span>
       <textarea class="bullet-text-el" rows="1"
-        data-sec="${esc(sec)}" data-ei="${ei}" data-bi="${bi}"
+        data-si="${si}" data-ei="${ei}" data-bi="${bi}"
       >${esc(text)}</textarea>
       <button class="bullet-lock${locked ? ' is-locked' : ''}"
-        title="${locked ? 'Unlock bullet' : 'Lock — always keep in output'}"
-        onclick="toggleLock('${sec}',${ei},${bi})">🔒</button>
+        title="${locked ? 'Unlock bullet' : 'Lock this bullet so it always stays in the output'}"
+        onclick="toggleLock(${si},${ei},${bi})">${ICON_LOCK}</button>
       <button class="bullet-del" title="Remove"
-        onclick="removeBullet('${sec}',${ei},${bi})">×</button>`;
+        onclick="removeBullet(${si},${ei},${bi})">${ICON_X}</button>`;
     ul.appendChild(li);
+    li.dataset.bi = bi;
 
     const ta = li.querySelector('textarea');
     autoResize(ta);
-    ta.addEventListener('input',  () => { autoResize(ta); saveBulletEdit(sec, ei, bi, ta.value); });
-    ta.addEventListener('change', () => saveBulletEdit(sec, ei, bi, ta.value));
+    ta.addEventListener('input',  () => { autoResize(ta); saveBulletEdit(si, ei, bi, ta.value); });
+    ta.addEventListener('change', () => saveBulletEdit(si, ei, bi, ta.value));
+
+    wireBulletDrag(li, si, ei, bi);
   });
 }
 
-function saveBulletEdit(sec, ei, bi, val) {
-  const bullet = state.resumeData.sections[sec][ei].bullets[bi];
+// Drag-to-reorder bullets within an entry (handle = the grip icon).
+function wireBulletDrag(li, si, ei, bi) {
+  const grip = li.querySelector('.bullet-drag');
+  grip.addEventListener('dragstart', e => {
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', String(bi));
+    li.classList.add('dragging');
+  });
+  grip.addEventListener('dragend', () => li.classList.remove('dragging'));
+
+  li.addEventListener('dragover', e => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    li.classList.add('drag-target');
+  });
+  li.addEventListener('dragleave', () => li.classList.remove('drag-target'));
+  li.addEventListener('drop', e => {
+    e.preventDefault();
+    li.classList.remove('drag-target');
+    const from = parseInt(e.dataTransfer.getData('text/plain'), 10);
+    const to   = bi;
+    if (Number.isNaN(from) || from === to) return;
+    const bullets = editSection(si)[ei].bullets;
+    const [moved] = bullets.splice(from, 1);
+    bullets.splice(to, 0, moved);
+    renderBulletList(si, ei);
+    markScoredStale();
+    scheduleAutosave();
+  });
+}
+
+function markScoredStale() {
+  if (state.scoredData) state.scoredStale = true;
+}
+
+function saveBulletEdit(si, ei, bi, val) {
+  const bullets = editSection(si)[ei].bullets;
+  const bullet = bullets[bi];
   if (typeof bullet === 'string') {
-    state.resumeData.sections[sec][ei].bullets[bi] = { raw: val, clean: val };
+    bullets[bi] = { raw: val, clean: val };
   } else {
     bullet.raw   = val;
     bullet.clean = val;
   }
+  markScoredStale();
+  scheduleAutosave();
 }
 
-function toggleLock(sec, ei, bi) {
-  const bullet = state.resumeData.sections[sec][ei].bullets[bi];
+function toggleLock(si, ei, bi) {
+  const bullets = editSection(si)[ei].bullets;
+  const bullet = bullets[bi];
   if (typeof bullet === 'string') {
-    state.resumeData.sections[sec][ei].bullets[bi] = { raw: bullet, clean: bullet, locked: true };
+    bullets[bi] = { raw: bullet, clean: bullet, locked: true };
   } else {
     bullet.locked = !bullet.locked;
   }
-  renderBulletList(sec, ei); // re-render without context (card already in DOM)
+  renderBulletList(si, ei); // re-render without context (card already in DOM)
+  markScoredStale();
+  scheduleAutosave();
 }
 
-function addBullet(sec, ei) {
-  state.resumeData.sections[sec][ei].bullets.push({ raw: '', clean: '', locked: false });
-  renderBulletList(sec, ei);
-  const ul  = document.getElementById(`bl-${sec}-${ei}`);
+function addBullet(si, ei) {
+  editSection(si)[ei].bullets.push({ raw: '', clean: '', locked: false });
+  renderBulletList(si, ei);
+  const ul  = document.getElementById(`bl-${si}-${ei}`);
   const tas = ul.querySelectorAll('textarea');
   if (tas.length) tas[tas.length - 1].focus();
+  markScoredStale();
+  scheduleAutosave();
 }
 
-function removeBullet(sec, ei, bi) {
-  state.resumeData.sections[sec][ei].bullets.splice(bi, 1);
-  renderBulletList(sec, ei);
+function removeBullet(si, ei, bi) {
+  editSection(si)[ei].bullets.splice(bi, 1);
+  renderBulletList(si, ei);
+  markScoredStale();
+  scheduleAutosave();
 }
 
-function updateMax(sec, ei, val) {
-  state.resumeData.sections[sec][ei].max_bullets = Math.max(1, parseInt(val) || 1);
+function updateMax(si, ei, val) {
+  editSection(si)[ei].max_bullets = Math.max(1, parseInt(val) || 1);
+  markScoredStale();
+  scheduleAutosave();
 }
 
 function toggleCard(id) {
-  document.getElementById(id)?.classList.toggle('open');
+  const card = document.getElementById(id);
+  if (!card) return;
+  card.classList.toggle('open');
+  // Re-measure textareas when a card opens (hidden elements report scrollHeight 0)
+  if (card.classList.contains('open')) resizeAllBullets();
 }
+
+window.addEventListener('resize', resizeAllBullets);
 
 // ────────────────────────────────────────────────────────────
 //  STEP 3 — Job Description
@@ -324,6 +527,7 @@ function initJobDesc() {
     state.jobDescription = ta.value;
     const words = ta.value.trim() ? ta.value.trim().split(/\s+/).length : 0;
     wc.textContent = `${words} word${words !== 1 ? 's' : ''}`;
+    scheduleAutosave();
   });
 
   clr.addEventListener('click', () => {
@@ -340,9 +544,9 @@ function initJobDesc() {
 // ────────────────────────────────────────────────────────────
 async function scoreResume() {
   const jd = document.getElementById('job-textarea').value.trim();
-  if (!jd) { toast('Please enter a job description', 'error'); return; }
+  if (!jd) { toast('Add a job description first', 'error'); return; }
 
-  showLoading('Scoring Bullets', 'Running semantic similarity — this takes a moment…');
+  showLoading('Matching to the job', 'Scoring every bullet against the description…');
   try {
     const data = await api('score', {
       method: 'POST',
@@ -350,15 +554,7 @@ async function scoreResume() {
     });
 
     state.scoredData = data.result;
-
-    // Default-select top max_bullets per entry
-    for (const entries of Object.values(state.scoredData.sections)) {
-      entries.forEach(entry => {
-        if (!entry.bullets) return;
-        const cap = entry.max_bullets ?? entry.bullets.length;
-        entry.bullets.forEach((b, i) => { b.selected = i < cap; });
-      });
-    }
+    state.scoredStale = false;
 
     // Transfer lock flags from resumeData → scoredData (bullets may be reordered)
     for (const [sec, entries] of Object.entries(state.scoredData.sections)) {
@@ -369,10 +565,21 @@ async function scoreResume() {
           const srcMatch = srcBullets.find(
             sb => (sb.raw || sb.clean || '') === (scoredB.raw || scoredB.clean || '')
           );
-          if (srcMatch?.locked) {
-            scoredB.locked   = true;
-            scoredB.selected = true; // locked bullets are always selected
-          }
+          if (srcMatch?.locked) scoredB.locked = true;
+        });
+      });
+    }
+
+    // Default-select: locked bullets always, then top-scoring up to the cap.
+    for (const entries of Object.values(state.scoredData.sections)) {
+      entries.forEach(entry => {
+        if (!entry.bullets) return;
+        const cap = effectiveCap(entry);
+        let used = 0;
+        entry.bullets.forEach(b => {
+          if (b.locked)            { b.selected = true;  used++; }
+          else if (used < cap)     { b.selected = true;  used++; }
+          else                      { b.selected = false; }
         });
       });
     }
@@ -381,23 +588,48 @@ async function scoreResume() {
     unlock(4);
     goToStep(4);
     renderScoredStep();
-    toast('Bullets scored and ranked!', 'success');
+    toast('Bullets ranked by relevance', 'success');
   } catch (err) {
     hideLoading();
     toast(err.message, 'error');
   }
 }
 
+// Locked bullets are always kept, so the real cap is at least the lock count.
+function effectiveCap(entry) {
+  const cap    = entry.max_bullets ?? entry.bullets.length;
+  const locked = entry.bullets.filter(b => b.locked).length;
+  return Math.max(cap, locked);
+}
+
+function scoredSection(si) { return state.scoredData.sections[state.scoredKeys[si]]; }
+
 function renderScoredStep() {
   const root = document.getElementById('scored-sections');
   root.innerHTML = '';
   if (!state.scoredData) return;
 
+  // If the resume was edited after scoring, the ranking is out of date.
+  if (state.scoredStale) {
+    root.innerHTML = `
+      <div class="restale-banner">
+        <div>
+          <strong>Your bullets changed since the last match.</strong>
+          <span>Re-run matching so the rankings and PDF reflect your edits.</span>
+        </div>
+        <button class="btn btn-primary" id="rescore-btn">Re-run matching</button>
+      </div>`;
+    document.getElementById('rescore-btn').onclick = () => { goToStep(3); scoreResume(); };
+    return;
+  }
+
+  state.scoredKeys = Object.keys(state.scoredData.sections);
   let anyScored = false;
 
-  for (const [sec, entries] of Object.entries(state.scoredData.sections)) {
+  state.scoredKeys.forEach((sec, si) => {
+    const entries = state.scoredData.sections[sec];
     const scoredEntries = entries.filter(e => e.bullets?.length && e.bullets[0]?.score != null);
-    if (!scoredEntries.length) continue;
+    if (!scoredEntries.length) return;
     anyScored = true;
 
     const grp = document.createElement('div');
@@ -406,55 +638,56 @@ function renderScoredStep() {
 
     entries.forEach((entry, ei) => {
       if (!entry.bullets?.length || entry.bullets[0]?.score == null) return;
-      grp.appendChild(buildScoredCard(sec, ei, entry));
+      grp.appendChild(buildScoredCard(si, ei, entry));
     });
 
     root.appendChild(grp);
-  }
+  });
 
   if (!anyScored) {
     root.innerHTML = `
       <div class="empty-state">
-        <span class="empty-state-icon">🔍</span>
+        <span class="empty-state-icon">${ICON_SEARCH}</span>
         <p>No scored bullets found. Go back and check your resume data.</p>
       </div>`;
   }
 }
 
-function buildScoredCard(sec, ei, entry) {
+function buildScoredCard(si, ei, entry) {
   const card = document.createElement('div');
   card.className = 'entry-card open';
-  card.id = `sc-${sec}-${ei}`;
+  card.id = `sc-${si}-${ei}`;
+  card.style.setProperty('--i', ei);
 
   const title    = entryTitle(entry);
   const subtitle = entrySubtitle(entry);
   const date     = entry.date || '';
   const selCount = entry.bullets.filter(b => b.selected).length;
-  const cap      = entry.max_bullets ?? entry.bullets.length;
+  const cap      = effectiveCap(entry);
 
   card.innerHTML = `
-    <div class="entry-header" onclick="toggleCard('sc-${sec}-${ei}')">
+    <div class="entry-header" onclick="toggleCard('sc-${si}-${ei}')">
       <div class="entry-header-info">
         <div class="entry-title">${esc(title)}</div>
         ${subtitle ? `<div class="entry-subtitle">${esc(subtitle)}</div>` : ''}
       </div>
-      <span class="counter-badge" id="cnt-${sec}-${ei}">
+      <span class="counter-badge" id="cnt-${si}-${ei}">
         <span class="cnt">${selCount}</span>&thinsp;/&thinsp;${cap} selected
       </span>
       ${date ? `<span class="entry-date">${esc(date)}</span>` : ''}
-      <span class="entry-chevron">▼</span>
+      <span class="entry-chevron">${ICON_CHEVRON}</span>
     </div>
     <div class="entry-body">
-      <ul class="bullets-list" id="sbl-${sec}-${ei}"></ul>
+      <ul class="bullets-list" id="sbl-${si}-${ei}"></ul>
     </div>`;
 
-  renderScoredBullets(sec, ei, entry);
+  renderScoredBullets(si, ei, entry);
   return card;
 }
 
-function renderScoredBullets(sec, ei, entry) {
+function renderScoredBullets(si, ei, entry) {
   setTimeout(() => {
-    const ul = document.getElementById(`sbl-${sec}-${ei}`);
+    const ul = document.getElementById(`sbl-${si}-${ei}`);
     if (!ul) return;
     ul.innerHTML = '';
 
@@ -468,32 +701,47 @@ function renderScoredBullets(sec, ei, entry) {
 
       const li = document.createElement('li');
       li.className = `bullet-item${selected ? '' : ' deselected'}${locked ? ' locked-bullet' : ''}`;
-      li.id = `sbi-${sec}-${ei}-${bi}`;
+      li.id = `sbi-${si}-${ei}-${bi}`;
       li.innerHTML = `
         <input type="checkbox" class="bullet-chk" ${selected ? 'checked' : ''}
-          ${locked ? 'disabled' : `onchange="toggleBullet('${sec}',${ei},${bi},this.checked)"`} />
+          ${locked ? 'disabled' : `onchange="toggleBullet(${si},${ei},${bi},this.checked)"`} />
         <span class="bullet-text-el">${esc(text)}</span>
-        ${locked ? '<span class="lock-icon" title="Locked — always included in output">🔒</span>' : ''}
-        <span class="score-pill ${cls}">${pct}%</span>`;
+        ${locked ? `<span class="lock-icon" title="Locked: always included in output">${ICON_LOCK}</span>` : ''}
+        <span class="score-pill ${cls}">
+          <span class="score-pill-bar"><span class="score-pill-fill" style="width:${pct}%"></span></span>
+          <span class="score-pill-num">${pct}%</span>
+        </span>`;
       ul.appendChild(li);
     });
   }, 0);
 }
 
-function toggleBullet(sec, ei, bi, checked) {
-  const bullet = state.scoredData.sections[sec][ei].bullets[bi];
+function toggleBullet(si, ei, bi, checked) {
+  const entry  = scoredSection(si)[ei];
+  const bullet = entry.bullets[bi];
   if (bullet.locked) return; // locked bullets cannot be deselected
+
+  // Enforce the per-entry cap: block selecting beyond it.
+  if (checked) {
+    const cap = effectiveCap(entry);
+    const selCount = entry.bullets.filter(b => b.selected).length;
+    if (selCount >= cap) {
+      const chk = document.querySelector(`#sbi-${si}-${ei}-${bi} .bullet-chk`);
+      if (chk) chk.checked = false;
+      toast(`This entry is capped at ${cap} bullet${cap !== 1 ? 's' : ''}. Raise "Max bullets" or deselect another.`, 'info');
+      return;
+    }
+  }
 
   bullet.selected = checked;
 
-  const li = document.getElementById(`sbi-${sec}-${ei}-${bi}`);
+  const li = document.getElementById(`sbi-${si}-${ei}-${bi}`);
   li?.classList.toggle('deselected', !checked);
 
   // Update counter
-  const entry    = state.scoredData.sections[sec][ei];
   const selCount = entry.bullets.filter(b => b.selected).length;
-  const cap      = entry.max_bullets ?? entry.bullets.length;
-  const cnt      = document.getElementById(`cnt-${sec}-${ei}`);
+  const cap      = effectiveCap(entry);
+  const cnt      = document.getElementById(`cnt-${si}-${ei}`);
   if (cnt) cnt.innerHTML = `<span class="cnt">${selCount}</span>&thinsp;/&thinsp;${cap} selected`;
 }
 
@@ -508,6 +756,11 @@ function initExport() {
 
 async function generatePDF() {
   if (!state.scoredData) return;
+  if (state.scoredStale) {
+    toast('Re-run matching first — your bullets changed since scoring', 'error');
+    goToStep(4);
+    return;
+  }
 
   // Build final data: selected bullets only (locked bullets are always selected)
   const finalData = { sections: {} };
@@ -523,7 +776,7 @@ async function generatePDF() {
     });
   }
 
-  showLoading('Compiling PDF', 'Running pdflatex — this usually takes under 10 seconds…');
+  showLoading('Typesetting your resume', 'Compiling LaTeX to PDF, almost there…');
   try {
     await api('compile', {
       method: 'POST',
@@ -535,7 +788,15 @@ async function generatePDF() {
     goToStep(5);
 
     document.getElementById('pdf-iframe').src = `/api/preview/${state.sessionId}`;
-    toast('PDF compiled successfully!', 'success');
+
+    // Default the download filename to "<source-resume-name>.pdf"
+    const nameInput = document.getElementById('pdf-name');
+    if (nameInput && !nameInput.value.trim()) {
+      const base = (state.resumeFilename || 'tailored_resume').replace(/\.tex$/i, '');
+      nameInput.value = `${base}.pdf`;
+    }
+
+    toast('PDF ready, take a look', 'success');
   } catch (err) {
     hideLoading();
     toast(err.message, 'error');
@@ -544,7 +805,10 @@ async function generatePDF() {
 
 function downloadPDF() {
   if (!state.sessionId) return;
-  window.location.href = `/api/download/${state.sessionId}`;
+  let name = (document.getElementById('pdf-name')?.value || '').trim();
+  if (name && !/\.pdf$/i.test(name)) name += '.pdf';
+  const q = name ? `?name=${encodeURIComponent(name)}` : '';
+  window.location.href = `/api/download/${state.sessionId}${q}`;
 }
 
 function startOver() {
@@ -553,6 +817,10 @@ function startOver() {
   state.selectedFile = null;
   state.resumeData  = null;
   state.scoredData  = null;
+  state.resumeFilename = '';
+  state.jobDescription = '';
+  const nameInput = document.getElementById('pdf-name');
+  if (nameInput) nameInput.value = '';
   state.unlocked    = { 1: true, 2: false, 3: false, 4: false, 5: false };
 
   document.getElementById('file-info').innerHTML   = '';
@@ -565,18 +833,19 @@ function startOver() {
   document.getElementById('pdf-iframe').src        = '';
 
   goToStep(1);
-  toast('Ready for a new resume!', 'info');
+  toast('Cleared. Upload a new resume to begin', 'info');
 }
 
 // ────────────────────────────────────────────────────────────
 //  Helpers
 // ────────────────────────────────────────────────────────────
 function entryTitle(e) {
-  return e.company || e.title || e.school || e.item || 'Entry';
+  return e.company || e.title || e.school || e.role || e.item || 'Entry';
 }
 function entrySubtitle(e) {
   const parts = [];
-  if (e.role)     parts.push(e.role);
+  // Skip role in the subtitle when it's already being used as the title
+  if (e.role && (e.company || e.title || e.school)) parts.push(e.role);
   if (e.location) parts.push(e.location);
   return parts.join(' · ');
 }
