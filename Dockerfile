@@ -49,6 +49,7 @@ ENV TOKENIZERS_PARALLELISM=false
 EXPOSE 8000
 
 # gunicorn serves web/app.py's `app`. One worker keeps the ML model in a
-# single process; bump workers only with more RAM (each loads the model).
-# Long timeout because pdflatex compiles can take a few seconds.
-CMD ["sh", "-c", "gunicorn --chdir web app:app --bind 0.0.0.0:${PORT:-8000} --workers 1 --timeout 120"]
+# single process (each extra worker would load its own copy); gthread with
+# several threads keeps status polls and scoring responsive while a
+# background compile thread runs pdflatex.
+CMD ["sh", "-c", "gunicorn --chdir web app:app --bind 0.0.0.0:${PORT:-8000} --workers 1 --worker-class gthread --threads 8 --timeout 120"]

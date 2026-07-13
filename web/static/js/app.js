@@ -123,9 +123,18 @@ async function api(path, opts = {}) {
     headers: (!isForm && opts.body) ? { 'Content-Type': 'application/json' } : {},
     body: (!isForm && opts.body) ? JSON.stringify(opts.body) : (opts.body || undefined),
   });
-  const data = await res.json();
-  if (!res.ok) throw new Error(data.error || `Request failed (${res.status})`);
-  return data;
+  // Hosting proxies can answer with an HTML error page (502/503) or an empty
+  // body instead of our JSON — surface a readable error instead of a
+  // JSON.parse exception.
+  const text = await res.text();
+  let data = null;
+  try {
+    data = text ? JSON.parse(text) : null;
+  } catch (e) {
+    throw new Error(`The server had a hiccup (${res.status}). Give it a few seconds and try again.`);
+  }
+  if (!res.ok) throw new Error(data?.error || `Request failed (${res.status})`);
+  return data ?? {};
 }
 
 // ── Utility ──────────────────────────────────────────────────
@@ -784,7 +793,7 @@ function initExport() {
 async function generatePDF() {
   if (!state.scoredData) return;
   if (state.scoredStale) {
-    toast('Re-run matching first — your bullets changed since scoring', 'error');
+    toast('Re-run matching first. Your bullets changed since scoring', 'error');
     goToStep(4);
     return;
   }
@@ -803,12 +812,17 @@ async function generatePDF() {
     });
   }
 
-  showLoading('Typesetting your resume', 'Compiling LaTeX to PDF, almost there…');
+  showLoading('Typesetting your resume', 'Compiling LaTeX to PDF. This can take a minute on the free server…');
   try {
+    // Compilation is asynchronous server-side (pdflatex can outlive proxy
+    // timeouts on slow hosts): kick it off, then poll for completion.
     await api('compile', {
       method: 'POST',
       body: { session_id: state.sessionId, resume_data: finalData },
     });
+
+    const status = await pollCompile(state.sessionId);
+    if (status !== 'done') throw new Error(status);
 
     hideLoading();
     unlock(5);
@@ -828,6 +842,25 @@ async function generatePDF() {
     hideLoading();
     toast(err.message, 'error');
   }
+}
+
+// Poll the async compile until it finishes. Resolves 'done' on success, or
+// an error message string on failure/timeout.
+async function pollCompile(sessionId, { intervalMs = 2000, maxMs = 300000 } = {}) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < maxMs) {
+    await new Promise(r => setTimeout(r, intervalMs));
+    let s;
+    try {
+      s = await api(`compile/status/${sessionId}`);
+    } catch (err) {
+      continue; // transient proxy hiccup; keep polling
+    }
+    if (s.status === 'done') return 'done';
+    if (s.status === 'error') return s.error || 'PDF compilation failed';
+    if (s.status === 'none') return 'Compile session was lost. Please try again';
+  }
+  return 'Compilation timed out. The free server may be overloaded, try again in a minute';
 }
 
 function downloadPDF() {

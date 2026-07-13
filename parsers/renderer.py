@@ -1,3 +1,4 @@
+import os
 import re
 import subprocess
 from pathlib import Path
@@ -262,10 +263,13 @@ def compile_pdf(tex_file: str, output_dir: str = "./output") -> bool:
     Path(output_dir).mkdir(parents=True, exist_ok=True)
     cmd = ["pdflatex", "-interaction=nonstopmode", "-output-directory", output_dir, tex_file]
     pdf_path = Path(output_dir) / (Path(tex_file).stem + ".pdf")
+    # Generous timeout: on fractional-CPU hosts (0.1 vCPU free tiers) a
+    # compile that takes 2s locally can take over a minute.
+    timeout_s = int(os.environ.get("PDFLATEX_TIMEOUT", "180"))
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=60)
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout_s)
     except subprocess.TimeoutExpired:
-        logger.error("pdflatex timed out after 60s for %s", tex_file)
+        logger.error("pdflatex timed out after %ss for %s", timeout_s, tex_file)
         return False
 
     if pdf_path.exists() and pdf_path.stat().st_size > 0:

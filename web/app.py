@@ -1,6 +1,8 @@
 from flask import Flask, render_template, request, jsonify, send_file
+import json
 import os
 import sys
+import threading
 import uuid
 import shutil
 import re
@@ -134,6 +136,46 @@ def score():
         return jsonify({"error": f"Scoring failed: {e}"}), 500
 
 
+# ---- async compile -------------------------------------------------------
+# pdflatex can take 30-60s on fractional-CPU hosts. Blocking the HTTP request
+# that long trips proxy timeouts (empty responses / HTML 502 pages) and, with
+# a single worker, wedges every other request behind it. So /api/compile
+# kicks off a background thread and returns immediately; the client polls
+# /api/compile/status/<sid>. Status lives in a file in the session dir.
+
+def _status_path(session_dir):
+    return session_dir / "compile_status.json"
+
+
+def _write_status(session_dir, status, error=None):
+    payload = {"status": status}
+    if error:
+        payload["error"] = error
+    _status_path(session_dir).write_text(json.dumps(payload))
+
+
+def _run_compile(session_dir, resume_data):
+    try:
+        tex_content = (session_dir / "resume.tex").read_text()
+        updated_tex = replace_bullets(tex_content, resume_data)
+
+        updated_path = session_dir / "resume_updated.tex"
+        updated_path.write_text(updated_tex)
+
+        output_dir = session_dir / "output"
+        output_dir.mkdir(exist_ok=True)
+
+        if compile_pdf(str(updated_path), str(output_dir)):
+            _write_status(session_dir, "done")
+        else:
+            _write_status(session_dir, "error",
+                          "PDF compilation failed. Your resume's LaTeX may use "
+                          "packages the server doesn't have.")
+    except Exception as e:
+        app.logger.exception("compile failed")
+        _write_status(session_dir, "error", f"Compilation crashed: {e}")
+
+
 @app.route("/api/compile", methods=["POST"])
 def compile_resume():
     body = request.get_json()
@@ -151,22 +193,31 @@ def compile_resume():
     if not tex_path.exists():
         return jsonify({"error": "Session not found — please re-upload your resume"}), 404
 
-    output_dir = session_dir / "output"
-    output_dir.mkdir(exist_ok=True)
+    # Don't stack a second compile on a session that's already compiling.
+    sp = _status_path(session_dir)
+    if sp.exists():
+        try:
+            if json.loads(sp.read_text()).get("status") == "running":
+                return jsonify({"started": True})
+        except Exception:
+            pass
 
+    _write_status(session_dir, "running")
+    threading.Thread(target=_run_compile, args=(session_dir, resume_data), daemon=True).start()
+    return jsonify({"started": True})
+
+
+@app.route("/api/compile/status/<session_id>")
+def compile_status(session_id):
+    if not _valid_session(session_id):
+        return jsonify({"error": "Invalid session id"}), 400
+    sp = _status_path(UPLOAD_DIR / session_id)
+    if not sp.exists():
+        return jsonify({"status": "none"})
     try:
-        tex_content = tex_path.read_text()
-        updated_tex = replace_bullets(tex_content, resume_data)
-
-        updated_path = session_dir / "resume_updated.tex"
-        updated_path.write_text(updated_tex)
-
-        success = compile_pdf(str(updated_path), str(output_dir))
-        if success:
-            return jsonify({"success": True})
-        return jsonify({"error": "pdflatex compilation failed — is pdflatex installed?"}), 500
-    except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify(json.loads(sp.read_text()))
+    except Exception:
+        return jsonify({"status": "none"})
 
 
 @app.route("/api/preview/<session_id>")
