@@ -20,6 +20,7 @@ WORKDIR /app
 
 # ---- python deps (cached layer) ----
 COPY requirements.txt .
+RUN pip install --no-cache-dir torch==2.8.0 --index-url https://download.pytorch.org/whl/cpu
 RUN pip install --no-cache-dir -r requirements.txt
 
 # ---- pre-download the sentence-transformers model into the image ----
