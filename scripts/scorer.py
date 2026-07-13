@@ -1,7 +1,17 @@
 import json
 import math
+import os
 import re
 from pathlib import Path
+
+# On fractional-CPU hosts (e.g. 0.1 vCPU free tiers) torch spawns threads for
+# cores that don't exist and they thrash each other. Pin thread count via
+# SCORER_THREADS (set to 1 in the production Dockerfile); unset = torch default.
+_threads = os.environ.get("SCORER_THREADS")
+if _threads:
+    import torch
+    torch.set_num_threads(max(1, int(_threads)))
+
 from sentence_transformers import SentenceTransformer, util
 
 
@@ -137,9 +147,59 @@ def score_all_bullets(data: dict, job_desc: str) -> dict:
     Score every bullet and attach a similarity score without filtering.
     Returns a copy of data with bullets sorted by score descending,
     each bullet having an added 'score' field.
+
+    All bullets across all sections are embedded in a SINGLE batched forward
+    pass — on low-CPU hosts (e.g. 0.1 vCPU free tiers) this is 10-50x faster
+    than encoding one bullet at a time.
     """
     requirements = split_job_description(job_desc)
     req_embeddings = model.encode(requirements, convert_to_tensor=True)
+
+    # ---- pass 1: collect every non-empty bullet's text ----
+    texts = []          # unique texts to embed
+    text_index = {}     # text -> row in the embedding matrix
+    prepared = []       # (entry_ref, [(raw, clean, row_or_None), ...])
+
+    for section, entries in data["sections"].items():
+        for entry in entries:
+            if "bullets" not in entry or not entry["bullets"]:
+                continue
+            blist = []
+            for bullet in entry["bullets"]:
+                if isinstance(bullet, dict):
+                    raw_text = bullet.get("raw") or bullet.get("clean", "")
+                    clean_text = bullet.get("clean", raw_text)
+                else:
+                    raw_text = str(bullet)
+                    clean_text = raw_text
+                if not clean_text.strip():
+                    blist.append((raw_text, clean_text, None))
+                    continue
+                if clean_text not in text_index:
+                    text_index[clean_text] = len(texts)
+                    texts.append(clean_text)
+                blist.append((raw_text, clean_text, text_index[clean_text]))
+            prepared.append((entry, blist))
+
+    # ---- single batched encode + one similarity matrix ----
+    best_by_row = []
+    if texts:
+        embs = model.encode(texts, convert_to_tensor=True, batch_size=64)
+        sims = util.cos_sim(embs, req_embeddings)      # (n_texts, n_reqs)
+        best_by_row = sims.max(dim=1).values.tolist()  # best req match per text
+
+    # ---- pass 2: build the scored structure ----
+    scored_by_entry = {}
+    for entry, blist in prepared:
+        scored_bullets = []
+        for raw_text, clean_text, row in blist:
+            if row is None:
+                score = 0.0  # empty bullets always rank last
+            else:
+                score = round(_calibrate(best_by_row[row]) * _text_validity(clean_text), 4)
+            scored_bullets.append({"raw": raw_text, "clean": clean_text, "score": score})
+        scored_bullets.sort(key=lambda x: x["score"], reverse=True)
+        scored_by_entry[id(entry)] = scored_bullets
 
     new_data = {"sections": {}}
 
@@ -151,37 +211,7 @@ def score_all_bullets(data: dict, job_desc: str) -> dict:
                 continue
 
             new_entry = dict(entry)
-            scored_bullets = []
-
-            for bullet in entry["bullets"]:
-                if isinstance(bullet, dict):
-                    raw_text = bullet.get("raw") or bullet.get("clean", "")
-                    clean_text = bullet.get("clean", raw_text)
-                else:
-                    raw_text = str(bullet)
-                    clean_text = raw_text
-
-                # Empty bullets score 0 so they always rank last
-                if not clean_text.strip():
-                    scored_bullets.append({
-                        "raw": raw_text,
-                        "clean": clean_text,
-                        "score": 0.0,
-                    })
-                    continue
-
-                bullet_emb = model.encode(clean_text, convert_to_tensor=True)
-                sims = util.cos_sim(bullet_emb, req_embeddings)[0]
-                raw_score = float(sims.max().item())
-
-                scored_bullets.append({
-                    "raw": raw_text,
-                    "clean": clean_text,
-                    "score": round(_calibrate(raw_score) * _text_validity(clean_text), 4),
-                })
-
-            scored_bullets.sort(key=lambda x: x["score"], reverse=True)
-            new_entry["bullets"] = scored_bullets
+            new_entry["bullets"] = scored_by_entry[id(entry)]
             new_entries.append(new_entry)
 
         new_data["sections"][section] = new_entries

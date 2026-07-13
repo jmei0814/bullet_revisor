@@ -39,6 +39,13 @@ COPY . .
 ENV DATA_DIR=/tmp/data
 ENV FLASK_DEBUG=0
 
+# Low-CPU hosts (0.1-0.5 vCPU free tiers): one inference thread beats a
+# thread pool fighting over a fractional core.
+ENV SCORER_THREADS=1
+ENV OMP_NUM_THREADS=1
+ENV MKL_NUM_THREADS=1
+ENV TOKENIZERS_PARALLELISM=false
+
 EXPOSE 8000
 
 # gunicorn serves web/app.py's `app`. One worker keeps the ML model in a
