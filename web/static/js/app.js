@@ -861,10 +861,17 @@ async function generatePDF() {
 
 // Poll the async compile until it finishes. Resolves 'done' on success, or
 // an error message string on failure/timeout.
-async function pollCompile(sessionId, { intervalMs = 2000, maxMs = 300000 } = {}) {
+//
+// Adaptive backoff: a fast host compiles in well under a second, so a fixed 2s
+// interval made every export *feel* like a 2-3s wait. Start polling quickly
+// (~200ms) and ease off toward 2s, so quick compiles return almost instantly
+// while slow fractional-CPU hosts (30-60s) still get a gentle poll cadence.
+async function pollCompile(sessionId, { minIntervalMs = 200, maxIntervalMs = 2000, maxMs = 300000 } = {}) {
   const t0 = Date.now();
+  let interval = minIntervalMs;
   while (Date.now() - t0 < maxMs) {
-    await new Promise(r => setTimeout(r, intervalMs));
+    await new Promise(r => setTimeout(r, interval));
+    interval = Math.min(interval * 1.6, maxIntervalMs);
     let s;
     try {
       s = await api(`compile/status/${sessionId}`);

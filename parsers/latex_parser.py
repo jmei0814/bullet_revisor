@@ -41,7 +41,9 @@ def _split_date_location(vals):
     """Given the two right-column items of a subheading, decide which is the
     date and which is the location. Keys off date-like content; falls back to
     the common Jake ordering (location, date) when it can't tell."""
-    vals = [v.strip() for v in vals]
+    # Clean to plain text so date/location display like company/role do
+    # (otherwise escaped LaTeX such as "Montr\'eal" or "D\&C" leaks to the UI).
+    vals = [clean_latex(v) for v in vals]
     dated = [v for v in vals if _is_date(v)]
     if len(dated) == 1:
         date = dated[0]

@@ -29,7 +29,8 @@ def _escape_specials(raw: str) -> str:
       - bare % & # are never valid in bullet text -> always escape
       - $: an odd number of unescaped $ cannot be math -> escape them all;
         an even count is assumed to be intentional $...$ math and left alone
-      - _: escaped only outside $...$ math spans
+      - _ ~ ^: escaped only outside $...$ math spans (bare ~ or ^ in text is a
+        LaTeX error; inside math they're valid nbsp/superscript so left alone)
     """
     raw = re.sub(r"(?<!\\)%", r"\\%", raw)
     raw = re.sub(r"(?<!\\)&", r"\\&", raw)
@@ -37,6 +38,9 @@ def _escape_specials(raw: str) -> str:
 
     if len(re.findall(r"(?<!\\)\$", raw)) % 2 == 1:
         raw = re.sub(r"(?<!\\)\$", r"\\$", raw)
+
+    # Text-mode replacements for characters that are otherwise LaTeX-active.
+    _TEXT_ONLY = {"_": r"\_", "~": r"\textasciitilde{}", "^": r"\textasciicircum{}"}
 
     out, in_math, i = [], False, 0
     while i < len(raw):
@@ -47,8 +51,8 @@ def _escape_specials(raw: str) -> str:
             continue
         if c == "$":
             in_math = not in_math
-        if c == "_" and not in_math:
-            out.append(r"\_")
+        if not in_math and c in _TEXT_ONLY:
+            out.append(_TEXT_ONLY[c])
         else:
             out.append(c)
         i += 1
