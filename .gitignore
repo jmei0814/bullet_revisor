@@ -28,7 +28,8 @@ build/
 web/uploads/
 web/user_data/
 
-# Output PDFs (generated artifacts; the app writes these at runtime)
+# Real resumes and generated artifacts: local-only, never commit (PII)
+data/
 output/
 /resume_updated.pdf
 resume_updated.*

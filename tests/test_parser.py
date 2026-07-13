@@ -110,7 +110,17 @@ def test_parse_counts_jake():
     print("  [ok] jakes_resume.tex parse counts")
 
 
+
+def _missing(path, label):
+    """data/ resumes are local-only (real PII, never committed). Skip
+    their tests gracefully when the files aren't present (e.g. fresh clone)."""
+    if os.path.exists(path):
+        return False
+    print(f"  [skip] {label} not present (local-only fixture)")
+    return True
+
 def test_parse_counts_gloria():
+    if _missing(GLORIA, 'data/jakes_resume.tex'): return
     data = parse_resume(GLORIA)
     c = bullet_counts(data)
     assert len(data["sections"]) == 9, list(data["sections"])
@@ -133,6 +143,7 @@ def test_parse_counts_gloria():
 
 
 def test_parse_counts_alternative():
+    if _missing(ALT, 'data/alternative.tex'): return
     data = parse_resume(ALT)
     c = bullet_counts(data)
     assert len(data["sections"]) == 6, list(data["sections"])
@@ -174,8 +185,10 @@ def _roundtrip_check(path, label):
 
 def test_roundtrip_all():
     _roundtrip_check(JAKE, "jakes_resume.tex")
-    _roundtrip_check(GLORIA, "data/jakes_resume.tex")
-    _roundtrip_check(ALT, "data/alternative.tex")
+    if not _missing(GLORIA, "data/jakes_resume.tex"):
+        _roundtrip_check(GLORIA, "data/jakes_resume.tex")
+    if not _missing(ALT, "data/alternative.tex"):
+        _roundtrip_check(ALT, "data/alternative.tex")
 
 
 # --------------------------------------------------------------------------- #
@@ -204,6 +217,7 @@ def test_compile_jake():
 
 
 def test_compile_gloria():
+    if _missing(GLORIA, 'data/jakes_resume.tex'): return
     """
     Gloria variant: the SOURCE itself does not compile with pdflatex because the
     'Honors and Awards' section nests an item list directly inside a subheading
@@ -233,6 +247,7 @@ def test_compile_gloria():
 
 
 def test_alternative_structural():
+    if _missing(ALT, 'data/alternative.tex'): return
     """maltacv.cls is not installed locally -> assert structural validity only."""
     out, _ = _render_to_file(ALT, "test_alt_out.tex")
     assert_structurally_valid(out, "data/alternative.tex")
