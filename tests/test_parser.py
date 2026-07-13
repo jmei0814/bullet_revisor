@@ -103,11 +103,31 @@ def test_parse_counts_jake():
     assert c["Experience"] == [3, 3, 6], c
     assert c["Projects"] == [4, 4], c
     assert c["Technical Skills"] == [0, 0, 0, 0], c  # 4 skill items
-    # duplicate company names both present and distinct entries
-    _, exp = find_section(data, "Experience")
-    companies = [e["company"] for e in exp]
-    assert companies.count("Southwestern University") == 2, companies
     print("  [ok] jakes_resume.tex parse counts")
+
+
+def test_field_placement():
+    """Fields must land in the right slots regardless of the argument order
+    the resume author used. Education and Experience in the Jake template
+    use OPPOSITE {org/loc/role/date} vs {role/date/org/loc} orderings."""
+    data = parse_resume(JAKE)
+
+    # Experience: {Role}{Date}{Company}{Location}
+    _, exp = find_section(data, "Experience")
+    e0 = exp[0]
+    assert e0["company"] == "Undergraduate Research Assistant", e0   # bold heading = title
+    assert "2020" in e0["date"] and "Present" in e0["date"], e0      # date detected
+    assert "TX" in e0["location"], e0                                # not swapped into date
+    assert re.search(r"\d{4}", e0["location"]) is None, e0           # location has no year
+
+    # Education: {School}{Location}{Degree}{Date} — opposite order
+    _, edu = find_section(data, "Education")
+    d0 = edu[0]
+    assert d0["company"] == "Southwestern University", d0            # bold heading = title
+    assert "2018" in d0["date"], d0                                  # date still found
+    assert "TX" in d0["location"], d0                                # location still correct
+    assert re.search(r"\d{4}", d0["location"]) is None, d0
+    print("  [ok] field placement (date/location/title by heuristic)")
 
 
 
@@ -301,7 +321,9 @@ def test_torture_parse_and_roundtrip():
     # Section and entry expectations
     sec, es = find_section(data, "R&D Experience")
     assert len(es) == 3, f"expected 3 R&D entries, got {len(es)}"
-    assert all("Ampersand & Sons" in e["company"] for e in es)
+    # Org appears as the bold heading (company) or the italic line (role)
+    # depending on the author's argument order — either is visually correct.
+    assert all("Ampersand & Sons" in (e.get("company", "") + e.get("role", "")) for e in es)
     assert [len(e["bullets"]) for e in es] == [3, 2, 1]
 
     _, proj = find_section(data, "Projects")
@@ -373,6 +395,7 @@ def main():
     os.makedirs(SCRATCH, exist_ok=True)
     tests = [
         test_parse_counts_jake,
+        test_field_placement,
         test_parse_counts_gloria,
         test_parse_counts_alternative,
         test_roundtrip_all,

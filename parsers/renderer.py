@@ -261,7 +261,10 @@ def compile_pdf(tex_file: str, output_dir: str = "./output") -> bool:
     Returns True on success, False on failure.
     """
     Path(output_dir).mkdir(parents=True, exist_ok=True)
-    cmd = ["pdflatex", "-interaction=nonstopmode", "-output-directory", output_dir, tex_file]
+    # -no-shell-escape hard-disables \write18 shell execution (defense in depth
+    # on top of the macro stripping in _sanitize_raw); closes the main RCE path.
+    cmd = ["pdflatex", "-no-shell-escape", "-interaction=nonstopmode",
+           "-output-directory", output_dir, tex_file]
     pdf_path = Path(output_dir) / (Path(tex_file).stem + ".pdf")
     # Generous timeout: on fractional-CPU hosts (0.1 vCPU free tiers) a
     # compile that takes 2s locally can take over a minute.

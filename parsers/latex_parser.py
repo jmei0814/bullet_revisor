@@ -22,6 +22,53 @@ def clean_latex(s: str) -> str:
     return re.sub(r"\s+", " ", s).strip()
 
 
+# A string "looks like a date" if it has a year, a month name, or a
+# present/expected marker. Used to place date vs. location correctly
+# regardless of which argument slot the resume author used.
+_DATE_RE = re.compile(
+    r"\b(?:19|20)\d{2}\b"                                  # 1999 / 2026
+    r"|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)\w*\.?\b"  # month
+    r"|\bpresent\b|\bcurrent\b|\bexpected\b|\bongoing\b",
+    re.I,
+)
+
+
+def _is_date(s: str) -> bool:
+    return bool(s) and bool(_DATE_RE.search(s))
+
+
+def _split_date_location(vals):
+    """Given the two right-column items of a subheading, decide which is the
+    date and which is the location. Keys off date-like content; falls back to
+    the common Jake ordering (location, date) when it can't tell."""
+    vals = [v.strip() for v in vals]
+    dated = [v for v in vals if _is_date(v)]
+    if len(dated) == 1:
+        date = dated[0]
+        location = next((v for v in vals if v != date), "")
+        return date, location
+    # 0 or 2 look date-like: fall back to Jake's {location}{date} order.
+    top, bottom = vals[0], vals[1]
+    return bottom, top
+
+
+def _subheading_fields(a):
+    """Map a 4-arg \\resumeSubheading to display fields by VISUAL position,
+    not assumed semantics. Layout is:
+        [ #1 bold      ] [ #2 (right) ]
+        [ #3 italic    ] [ #4 (right) ]
+    so #1 is always the card title and #3 the subtitle; #2/#4 are the
+    date/location pair (order varies by author, so detect it)."""
+    date, location = _split_date_location([a[1], a[3]])
+    return {
+        "company": clean_latex(a[0]),   # bold heading -> card title
+        "title_raw": a[0],              # raw form for renderer anchoring
+        "role": clean_latex(a[2]),      # italic line -> subtitle
+        "date": date,
+        "location": location,
+    }
+
+
 def _strip_comments(tex: str) -> str:
     """
     Remove LaTeX line comments (unescaped ``%`` to end of line) while preserving
@@ -223,19 +270,16 @@ def _parse_article(tex: str):
             bullets = _bullets_from_inner(o["il"])
             a = o["args"]
             if o["kind"] == "subheading":
-                entry = {
-                    "role": clean_latex(a[0]),
-                    "date": clean_latex(a[1]),
-                    "company": clean_latex(a[2]),
-                    "location": clean_latex(a[3]),
-                    "title_raw": a[0],
-                    "bullets": bullets,
-                }
+                entry = _subheading_fields(a)
+                entry["bullets"] = bullets
             elif o["kind"] == "subheadingS":
+                # {#1 bold heading}{#2 right}: #2 is a date or a location.
+                second = clean_latex(a[1])
                 entry = {
                     "company": clean_latex(a[0]),
                     "title_raw": a[0],
-                    "date": clean_latex(a[1]),
+                    "date": second if _is_date(second) else "",
+                    "location": "" if _is_date(second) else second,
                     "bullets": bullets,
                 }
             else:  # project

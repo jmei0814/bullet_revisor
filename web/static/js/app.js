@@ -292,6 +292,19 @@ function initUpload() {
   });
 
   btn.addEventListener('click', uploadAndParse);
+
+  document.getElementById('demo-btn')?.addEventListener('click', loadSampleResume);
+}
+
+// Demo shortcut: load the bundled sample resume and parse it in one click.
+async function loadSampleResume() {
+  try {
+    const tex = await (await fetch('/static/sample_resume.tex')).text();
+    setFile(new File([tex], 'sample_resume.tex', { type: 'text/x-tex' }));
+    await uploadAndParse();
+  } catch (err) {
+    toast("Couldn't load the sample resume", 'error');
+  }
 }
 
 function setFile(file) {
@@ -812,7 +825,7 @@ async function generatePDF() {
     });
   }
 
-  showLoading('Typesetting your resume', 'Compiling LaTeX to PDF. This can take a minute on the free server…');
+  showLoading('Typesetting your resume', 'Compiling LaTeX to PDF…');
   try {
     // Compilation is asynchronous server-side (pdflatex can outlive proxy
     // timeouts on slow hosts): kick it off, then poll for completion.
@@ -860,7 +873,7 @@ async function pollCompile(sessionId, { intervalMs = 2000, maxMs = 300000 } = {}
     if (s.status === 'error') return s.error || 'PDF compilation failed';
     if (s.status === 'none') return 'Compile session was lost. Please try again';
   }
-  return 'Compilation timed out. The free server may be overloaded, try again in a minute';
+  return 'Compilation timed out. Please try again';
 }
 
 function downloadPDF() {
