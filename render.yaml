@@ -1,11 +1,12 @@
-# Render blueprint — optional paid alternative to the free Hugging Face Space.
-# No persistent disk needed: user persistence lives in the browser
-# (localStorage) and server sessions are transient.
+# Render blueprint — free-tier Docker deploy. No persistent disk needed:
+# user persistence lives in the browser (localStorage) and server sessions
+# are transient. Measured footprint ~220 MB RSS with the model warm, so the
+# free 512 MB instance is sufficient.
 services:
   - type: web
     name: bulletrevisor
     runtime: docker
-    plan: starter          # 512 MB RAM; the ML model + LaTeX need >256 MB
+    plan: free             # sleeps after ~15 min idle; upgrade to starter ($7/mo) to stay warm
     healthCheckPath: /
     envVars:
       - key: DATA_DIR

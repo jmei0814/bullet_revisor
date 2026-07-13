@@ -1,76 +1,64 @@
 # Deploying BulletRevisor
 
-## Why not Vercel / Netlify
+## Why not Vercel / Netlify / HF Spaces
 
-BulletRevisor is **not** a static site or a lightweight serverless function, so
-Vercel and Netlify cannot host it. Three hard blockers:
+BulletRevisor is **not** a static site or a lightweight serverless function:
 
-1. **It runs `pdflatex`.** Compiling a resume shells out to a full TeX Live
-   installation (hundreds of MB of system binaries). Serverless platforms don't
-   let you install or run arbitrary system binaries.
-2. **It loads a machine-learning model.** `sentence-transformers` pulls in
-   PyTorch (~340 MB). Vercel's serverless function bundle limit is 250 MB
-   unzipped — PyTorch alone exceeds it.
+1. **It runs `pdflatex`** — a full TeX Live install (hundreds of MB of system
+   binaries). Serverless platforms can't run arbitrary system binaries.
+2. **It loads a machine-learning model** — `sentence-transformers` pulls in
+   PyTorch (~340 MB on disk). Vercel's function bundle limit is 250 MB.
 3. **It needs a real (if ephemeral) filesystem** for compile sessions.
 
-The app needs a **Docker container host**. Since user persistence lives in the
-browser (localStorage) and the server stores resumes only transiently (sessions
-are swept after ~1 hour), **no persistent disk is required** — which makes the
-free tier of Hugging Face Spaces a perfect fit.
+So it needs a **Docker container host**. Hugging Face Spaces would work
+technically, but Docker Spaces now require a PRO subscription ($9/mo).
+
+Good news: user persistence lives in the **browser** (localStorage) and the
+server stores resumes only transiently (sessions swept after ~1 hour), so
+**no persistent disk is required** — and the app's measured memory footprint
+is only **~220 MB** with the model warm. That fits Render's free tier.
 
 ---
 
-## Recommended: Hugging Face Spaces (free)
+## Recommended: Render free tier ($0, no credit card)
 
-Free Docker runtime with 2 vCPU / 16 GB RAM — plenty for PyTorch + TeX Live.
-Tradeoff: free Spaces sleep after ~48 h without traffic and take ~30–60 s to
-wake. (This repo is already Space-ready: the `README.md` front-matter declares
-`sdk: docker` / `app_port: 8000`, and the Dockerfile handles HF's non-root
-runtime user.)
+Tradeoff: free services sleep after ~15 min without traffic and take ~30–60 s
+to wake. Fine for personal use; for a live demo, open the URL a minute early
+(or upgrade to Starter, $7/mo, to stay always-warm — one line in render.yaml).
 
-1. Create a free account at <https://huggingface.co> (Sign Up).
-2. Create an access token with **write** scope:
-   Settings → Access Tokens → New token.
-3. Create the Space: <https://huggingface.co/new-space> →
-   - Owner: your username, Space name: `bulletrevisor`
-   - License: MIT (or your choice)
-   - SDK: **Docker** → Blank template
-   - Visibility: **Public**
-4. Push this repo to the Space:
-   ```bash
-   cd /Users/jmei0814/Documents/Resume_Builder
-   git remote add hf https://huggingface.co/spaces/<your-hf-username>/bulletrevisor
-   git push hf main
-   # username: your HF username, password: the access token
-   ```
-5. Watch the build on the Space page (~10–15 min the first time — it installs
-   TeX Live and bakes the ML model into the image).
-6. Your public URL: `https://<your-hf-username>-bulletrevisor.hf.space`
+This repo already contains the blueprint (`render.yaml`, `plan: free`).
 
-Redeploys: just `git push hf main` again. Push to GitHub (`git push origin
-main`) as usual — the two remotes are independent.
+1. Push the repo to GitHub (already done: `jmei0814/bullet_revisor`).
+2. Go to <https://dashboard.render.com> → sign in **with GitHub**.
+3. Click **New +** → **Blueprint**.
+4. Select the `bullet_revisor` repo. Render reads `render.yaml`.
+5. Click **Apply**. First build takes ~10–15 min (TeX Live + model bake).
+6. Your public URL: `https://bulletrevisor.onrender.com` (or similar).
+
+Redeploys are automatic on every `git push origin main`.
 
 ---
 
-## Paid upgrade path (no code changes)
+## Alternatives
 
-If the demo needs to be always-warm or on a custom domain:
-
-**Render (~$7/mo)** — this repo includes `render.yaml`:
-dashboard.render.com → New + → Blueprint → pick the GitHub repo → Apply.
-Supports custom domains + no sleep on paid instances.
-
-**Fly.io (~$3–5/mo)**:
+**Google Cloud Run** — genuinely serverless *containers*, generous free tier
+(2M requests/mo), scale-to-zero. Needs a Google Cloud account with a credit
+card on file (stays $0 at personal usage levels):
 ```bash
-fly launch --dockerfile Dockerfile
-fly deploy
+gcloud run deploy bulletrevisor --source . --region us-central1 \
+  --memory 1Gi --allow-unauthenticated
 ```
+
+**Oracle Cloud Always Free** — a free-forever ARM VM (up to 4 cores / 24 GB
+RAM). Most powerful $0 option, most setup: create the VM, install Docker,
+`docker run`, add Caddy for HTTPS, open port 443 in the security list.
+
+**Fly.io / Railway** — ~$3–5/mo, both deploy the Dockerfile directly.
 
 **Any $4–6/mo VPS** (Hetzner, DigitalOcean):
 ```bash
 docker build -t bulletrevisor . && docker run -d -p 80:8000 --restart=always bulletrevisor
 ```
-(Add Caddy or nginx for HTTPS.)
 
 ---
 
@@ -79,8 +67,7 @@ docker build -t bulletrevisor . && docker run -d -p 80:8000 --restart=always bul
 Run one resume end to end on the public URL: upload → edit → lock a bullet →
 paste a job description → match → generate PDF → download. Then reload the
 page and confirm the "Pick up where you left off" card restores your edits
-(it's reading your browser's localStorage, so it works even right after a
-redeploy).
+(it reads your browser's localStorage, so it survives redeploys).
 
 ## Local Docker test
 

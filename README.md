@@ -1,13 +1,3 @@
----
-title: BulletRevisor
-emoji: 🎯
-colorFrom: green
-colorTo: gray
-sdk: docker
-app_port: 8000
-pinned: false
----
-
 # BulletRevisor
 
 Tailor your LaTeX resume to any job posting in about a minute.
@@ -54,5 +44,5 @@ my_env/bin/python tests/test_parser.py
 
 ## Deploy
 
-See [DEPLOYMENT.md](DEPLOYMENT.md) — free on Hugging Face Spaces (this repo is
-Space-ready), or Render/Fly/VPS via the same Dockerfile.
+See [DEPLOYMENT.md](DEPLOYMENT.md) — free on Render (blueprint included), or
+Cloud Run/Fly/VPS via the same Dockerfile.
