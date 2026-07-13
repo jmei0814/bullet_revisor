@@ -1,0 +1,40 @@
+# BulletRevisor — local/self-hosted container.
+#
+# One-line reset after a new commit (build the site, swap in the new
+# container, reclaim disk from the old one):
+#
+#     ./reset.sh
+#
+# which is just:
+#
+#     docker compose up -d --build --force-recreate --remove-orphans \
+#       && docker image prune -f && docker builder prune -f
+#
+# Then open http://localhost:8000  (override with PORT=xxxx ./reset.sh).
+
+services:
+  web:
+    build: .
+    # Fixed image tag so each rebuild orphans the previous one, which
+    # `docker image prune -f` then reclaims — no piling-up of <none> images.
+    image: bulletrevisor:latest
+    container_name: bulletrevisor
+    ports:
+      - "${PORT:-8000}:8000"
+    environment:
+      # The Dockerfile already sets DATA_DIR, FLASK_DEBUG=0, SCORER_THREADS,
+      # etc.; PORT is the only knob worth overriding from the host.
+      PORT: 8000
+    # Sessions are transient by design (real persistence lives in the user's
+    # browser via localStorage), so keep DATA_DIR in RAM: it auto-clears on
+    # restart and gives pdflatex a fast scratch dir off the host disk.
+    tmpfs:
+      - /tmp/data:size=256m
+    restart: unless-stopped
+    healthcheck:
+      # slim image has no curl; use the bundled python instead.
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 40s

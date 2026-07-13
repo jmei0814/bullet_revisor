@@ -13,3 +13,9 @@ output/
 *.out
 .DS_Store
 tests/
+
+# Dev/host tooling — not needed inside the image
+docker-compose.yml
+reset.sh
+Dockerfile
+.dockerignore
