@@ -591,8 +591,9 @@ textarea:focus-visible, input:focus-visible { outline-offset: 1px; }
   font-size: 12px; font-weight: 500; padding: 6px 13px;
   border-radius: 20px; margin-bottom: 20px;
   max-width: 100%;
-  white-space: nowrap;
 }
+/* The descriptive copy must be free to wrap; only the save-indicator pill
+   stays on one line (it sets its own white-space: nowrap below). */
 .info-chip-copy { display: inline-flex; align-items: center; gap: 7px; min-width: 0; }
 .info-chip svg { width: 14px; height: 14px; flex-shrink: 0; }
 

@@ -56,9 +56,23 @@ def _too_large(e):
     return jsonify({"error": "That file is too large. Resume .tex files should be under 2 MB."}), 413
 
 
+def _asset_version():
+    """Cache-busting token derived from the newest static asset mtime, so a
+    browser never serves a stale app.js/styles.css after a code change."""
+    static_dir = Path(app.static_folder)
+    try:
+        mtimes = [
+            (static_dir / "js" / "app.js").stat().st_mtime,
+            (static_dir / "css" / "styles.css").stat().st_mtime,
+        ]
+        return str(int(max(mtimes)))
+    except OSError:
+        return "0"
+
+
 @app.route("/")
 def index():
-    return render_template("index.html")
+    return render_template("index.html", asset_v=_asset_version())
 
 
 @app.route("/api/upload", methods=["POST"])

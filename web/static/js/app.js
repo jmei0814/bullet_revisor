@@ -299,7 +299,9 @@ function initUpload() {
 // Demo shortcut: load the bundled sample resume and parse it in one click.
 async function loadSampleResume() {
   try {
-    const tex = await (await fetch('/static/sample_resume.tex')).text();
+    const res = await fetch('/static/sample_resume.tex');
+    if (!res.ok) throw new Error(`sample fetch failed: ${res.status}`);
+    const tex = await res.text();
     setFile(new File([tex], 'sample_resume.tex', { type: 'text/x-tex' }));
     await uploadAndParse();
   } catch (err) {
